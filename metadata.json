@@ -1,0 +1,5 @@
+{
+  "name": "FlowSpace",
+  "description": "A dashboard for managing Google Workspace automations and workflows.",
+  "requestFramePermissions": []
+}
