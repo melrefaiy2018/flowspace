@@ -713,7 +713,7 @@ export const api = {
     fetchJSON<{ installed: boolean; authenticated: boolean }>('/api/codex/status'),
 
   pollCodexLogin: () =>
-    fetchJSON<{ authenticated: boolean }>('/api/codex/login/poll'),
+    fetchJSON<{ authenticated: boolean; reason?: string }>('/api/codex/login/poll'),
 
   // ── Version ──────────────────────────────────────────────────────
   getVersion: () => fetchJSON<VersionInfo>('/api/version'),

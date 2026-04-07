@@ -109,13 +109,13 @@ export default function LLMProviderSettings({
     setCodexLoginState('starting');
     setCodexLoginError(null);
     try {
-      const { authenticated } = await api.pollCodexLogin();
+      const { authenticated, reason } = await api.pollCodexLogin();
       if (authenticated) {
         setCodexLoginState('success');
         setCodexStatus({ installed: true, authenticated: true });
       } else {
         setCodexLoginState('error');
-        setCodexLoginError('Not signed in yet — run "codex login" in your terminal first.');
+        setCodexLoginError(`Not signed in yet — run "codex login" in your terminal first. (${reason ?? 'unknown'})`);
       }
     } catch (err: any) {
       setCodexLoginState('error');

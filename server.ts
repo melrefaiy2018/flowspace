@@ -1084,32 +1084,46 @@ function findCodexBin(): string | null {
   return null;
 }
 
-function isCodexAuthenticated(_codexBin: string): boolean {
+function checkCodexAuth(): { authenticated: boolean; reason: string } {
   // codex login status writes directly to the terminal device — cannot be captured via pipe.
   // Instead, check ~/.codex/auth.json which codex writes after a successful login.
   try {
     const authPath = path.join(os.homedir(), '.codex', 'auth.json');
-    if (!fs.existsSync(authPath)) return false;
-    const auth = JSON.parse(fs.readFileSync(authPath, 'utf-8'));
-    return !!(auth.auth_mode && (auth.tokens || auth.OPENAI_API_KEY));
-  } catch {
-    return false;
+    if (!fs.existsSync(authPath)) {
+      return { authenticated: false, reason: 'auth.json not found' };
+    }
+    const raw = fs.readFileSync(authPath, 'utf-8');
+    const auth = JSON.parse(raw);
+    // Any of these indicate a successful login
+    const hasTokens = auth.tokens && (
+      typeof auth.tokens === 'string' ||
+      (typeof auth.tokens === 'object' && Object.keys(auth.tokens).length > 0)
+    );
+    const hasApiKey = typeof auth.OPENAI_API_KEY === 'string' && auth.OPENAI_API_KEY.length > 0;
+    const hasAuthMode = typeof auth.auth_mode === 'string' && auth.auth_mode.length > 0;
+    if (hasTokens || hasApiKey || hasAuthMode) {
+      return { authenticated: true, reason: `auth_mode=${auth.auth_mode}` };
+    }
+    return { authenticated: false, reason: `auth.json exists but no tokens/key/mode (keys: ${Object.keys(auth).join(',')})` };
+  } catch (err: any) {
+    return { authenticated: false, reason: `error: ${err?.message}` };
   }
 }
 
 app.get('/api/codex/status', (_req, res) => {
   const bin = findCodexBin();
   if (!bin) {
-    return res.json({ installed: false, authenticated: false });
+    return res.json({ installed: false, authenticated: false, reason: 'codex binary not found' });
   }
-  const authenticated = isCodexAuthenticated(bin);
-  res.json({ installed: true, authenticated });
+  const { authenticated, reason } = checkCodexAuth();
+  res.json({ installed: true, authenticated, reason });
 });
 
 app.get('/api/codex/login/poll', (_req, res) => {
   const bin = findCodexBin();
-  if (!bin) return res.json({ authenticated: false });
-  res.json({ authenticated: isCodexAuthenticated(bin) });
+  if (!bin) return res.json({ authenticated: false, reason: 'codex binary not found' });
+  const { authenticated, reason } = checkCodexAuth();
+  res.json({ authenticated, reason });
 });
 
 // ---------------------------------------------------------------------------
