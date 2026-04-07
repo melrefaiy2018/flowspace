@@ -44,6 +44,7 @@ const REQUIRED_NODE_MAJOR = 20;
 
 interface FlowSpaceConfig {
   version: number;
+  appVersion?: string;
   google: {
     clientSecretPath: string;
     configured: boolean;
@@ -180,6 +181,7 @@ async function runSetupWizard(): Promise<FlowSpaceConfig> {
 
   const config: FlowSpaceConfig = {
     version: 1,
+    appVersion: getVersion(),
     google: googleSection,
     ai: aiSection,
     port,
@@ -579,10 +581,69 @@ async function main(): Promise<void> {
   const portIdx = args.indexOf('--port');
   const port = portIdx >= 0 ? parseInt(args[portIdx + 1], 10) || DEFAULT_PORT : DEFAULT_PORT;
 
-  // Check config — run setup if first time
+  // Check config — run setup if first time, or prompt on version change
   let config = readConfig();
   if (!config) {
-    config = await runSetupWizard();
+    // Check for an existing install with no config (e.g. migrated from old version)
+    const hasExistingData = fs.existsSync(FLOWSPACE_DIR) &&
+      fs.readdirSync(FLOWSPACE_DIR).some(f => ['.llm-settings.json', '.tokens.json', '.accounts.json'].includes(f));
+
+    if (hasExistingData) {
+      p.intro('Welcome back to FlowSpace');
+      p.note(
+        'An existing FlowSpace installation was found, but setup has not been completed.\n' +
+        'Your existing Google sign-in and settings will be preserved.',
+        'Existing installation detected'
+      );
+      const action = await p.select({
+        message: 'What would you like to do?',
+        options: [
+          { value: 'keep', label: 'Keep existing settings and start', hint: 'Recommended — your Google account stays connected' },
+          { value: 'setup', label: 'Re-run setup wizard', hint: 'Configure a new AI provider or change settings' },
+          { value: 'fresh', label: 'Start fresh (delete all settings)', hint: 'Removes all saved accounts and settings' },
+        ],
+      });
+
+      if (p.isCancel(action)) { p.cancel('Cancelled.'); process.exit(0); }
+
+      if (action === 'fresh') {
+        const confirm = await p.confirm({ message: 'Delete all FlowSpace settings? This cannot be undone.' });
+        if (p.isCancel(confirm) || !confirm) { p.cancel('Cancelled.'); process.exit(0); }
+        fs.readdirSync(FLOWSPACE_DIR).forEach(f => {
+          try { fs.rmSync(path.join(FLOWSPACE_DIR, f), { recursive: true }); } catch { /* ignore */ }
+        });
+        p.log.success('Settings cleared.');
+        config = await runSetupWizard();
+      } else if (action === 'setup') {
+        config = await runSetupWizard();
+      } else {
+        // Keep existing — write a minimal config so we don't ask again
+        config = { version: 1, appVersion: getVersion(), google: { clientSecretPath: '', configured: true }, ai: { configured: false }, port: DEFAULT_PORT };
+        writeConfig(config);
+      }
+    } else {
+      config = await runSetupWizard();
+    }
+  } else if (config.appVersion && config.appVersion !== getVersion()) {
+    // Version changed — ask if they want to re-run setup
+    p.intro(`FlowSpace updated to v${getVersion()}`);
+    const action = await p.select({
+      message: 'Your settings from the previous version are intact. What would you like to do?',
+      options: [
+        { value: 'keep', label: 'Keep existing settings and start', hint: 'Recommended' },
+        { value: 'setup', label: 'Re-run setup wizard', hint: 'Reconfigure AI provider or other settings' },
+      ],
+    });
+
+    if (p.isCancel(action)) { p.cancel('Cancelled.'); process.exit(0); }
+
+    if (action === 'setup') {
+      config = await runSetupWizard();
+    } else {
+      // Update stored version
+      config = { ...config, appVersion: getVersion() };
+      writeConfig(config);
+    }
   }
 
   // Check port availability
