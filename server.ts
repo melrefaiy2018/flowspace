@@ -618,6 +618,20 @@ function loadOAuthClientConfig(): OAuthClientConfig {
     }
   }
 
+  // Fall back to credentials injected at build time (obfuscated in binary, no file on disk)
+  // These are replaced by the release script via esbuild --define
+  const injectedClientId: string = typeof __OAUTH_CLIENT_ID__ !== 'undefined' ? __OAUTH_CLIENT_ID__ : '';
+  const injectedClientSecret: string = typeof __OAUTH_CLIENT_SECRET__ !== 'undefined' ? __OAUTH_CLIENT_SECRET__ : '';
+  if (
+    injectedClientId &&
+    injectedClientSecret &&
+    !injectedClientId.includes('__OAUTH') &&
+    !injectedClientSecret.includes('__OAUTH')
+  ) {
+    cachedOAuthClientConfig = { client_id: injectedClientId, client_secret: injectedClientSecret };
+    return cachedOAuthClientConfig;
+  }
+
   const tried = candidatePaths.join('\n  - ');
   throw new Error(`No valid client_secret.json found. Searched:\n  - ${tried}\nEnsure at least one contains real Google OAuth credentials (not placeholders).`);
 }

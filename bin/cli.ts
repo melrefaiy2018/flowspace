@@ -193,138 +193,15 @@ async function runSetupWizard(): Promise<FlowSpaceConfig> {
 }
 
 async function setupGoogle(): Promise<FlowSpaceConfig['google']> {
-  p.log.step('Step 1: Google Workspace Connection');
+  p.log.step('Step 1: Google Sign-in');
 
   p.log.message(
-    'FlowSpace needs a Google Cloud OAuth client to access your Drive, Gmail, Calendar, and Tasks.\n\n' +
-    'If you don\'t have one yet, follow these steps:\n' +
-    '  1. Go to https://console.cloud.google.com\n' +
-    '  2. Create a new project (e.g., "FlowSpace")\n' +
-    '  3. Enable these APIs: Drive, Gmail, Calendar, Tasks\n' +
-    '  4. Go to APIs & Services > OAuth consent screen\n' +
-    '     - Choose "External", fill in app name\n' +
-    '     - Add yourself as a test user\n' +
-    '  5. Go to Credentials > Create Credentials > OAuth client ID\n' +
-    '     - Application type: "Desktop app"\n' +
-    '  6. Download the JSON file (client_secret_*.json)'
+    'FlowSpace will open your browser to sign in with Google.\n' +
+    'You\'ll need to grant access to Drive, Gmail, Calendar, and Tasks.\n\n' +
+    'Sign-in happens in the app after setup — just click "Sign in with Google".'
   );
 
-  // Check if we already have a valid client_secret
-  if (fs.existsSync(CLIENT_SECRET_PATH) && hasValidClientSecret(CLIENT_SECRET_PATH)) {
-    const reuse = await p.confirm({
-      message: `Found existing client_secret.json in FlowSpace data dir. Use it?`,
-    });
-
-    if (p.isCancel(reuse)) {
-      p.cancel('Setup cancelled.');
-      process.exit(0);
-    }
-
-    if (reuse) {
-      p.log.success('Using existing Google OAuth credentials.');
-      return { clientSecretPath: CLIENT_SECRET_PATH, configured: true };
-    }
-  }
-
-  // Ask for path to client_secret.json
-  let secretPath: string | null = null;
-  while (!secretPath) {
-    const input = await p.text({
-      message: 'Path to your client_secret.json file:',
-      placeholder: '~/Downloads/client_secret_123.json',
-      validate: (value) => {
-        if (!value.trim()) return 'Please enter a file path.';
-        const resolved = value.trim().replace(/^~/, os.homedir());
-        if (!fs.existsSync(resolved)) return `File not found: ${resolved}`;
-        if (!hasValidClientSecret(resolved)) {
-          return 'This doesn\'t look like a valid Google OAuth client_secret.json file.';
-        }
-        return undefined;
-      },
-    });
-
-    if (p.isCancel(input)) {
-      p.cancel('Setup cancelled.');
-      process.exit(0);
-    }
-
-    secretPath = (input as string).trim().replace(/^~/, os.homedir());
-  }
-
-  // Copy to ~/.flowspace/
-  ensureDir(FLOWSPACE_DIR);
-  fs.copyFileSync(secretPath, CLIENT_SECRET_PATH);
-  fs.chmodSync(CLIENT_SECRET_PATH, 0o600);
-  p.log.success('Copied client_secret.json to FlowSpace data dir.');
-
-  // Ensure gws CLI is installed
-  const gwsSpinner = p.spinner();
-  let gwsCommand = findGwsCommand();
-
-  if (!gwsCommand) {
-    gwsSpinner.start('Installing Google Workspace CLI...');
-    try {
-      execSync('npm install -g @googleworkspace/cli', {
-        stdio: 'pipe',
-        timeout: 120_000,
-        env: getShellEnv(),
-      });
-      gwsCommand = findGwsCommand();
-      if (gwsCommand) {
-        gwsSpinner.stop('Google Workspace CLI installed.');
-      } else {
-        gwsSpinner.stop('gws CLI installed but not found on PATH.');
-        p.log.warn('Try running: npm install -g @googleworkspace/cli');
-      }
-    } catch (err) {
-      gwsSpinner.stop('Could not install gws CLI automatically.');
-      p.log.warn(
-        'Install it manually: npm install -g @googleworkspace/cli\n' +
-        'Then re-run: flowspace'
-      );
-    }
-  }
-
-  // Copy client_secret to gws config dir
-  if (gwsCommand) {
-    const gwsConfigDir = path.join(os.homedir(), '.config', 'gws');
-    ensureDir(gwsConfigDir);
-    const gwsSecretPath = path.join(gwsConfigDir, 'client_secret.json');
-    fs.copyFileSync(CLIENT_SECRET_PATH, gwsSecretPath);
-
-    // Run gws auth login
-    const doLogin = await p.confirm({
-      message: 'Sign in with Google now? (opens your browser)',
-    });
-
-    if (p.isCancel(doLogin)) {
-      p.cancel('Setup cancelled.');
-      process.exit(0);
-    }
-
-    if (doLogin && gwsCommand) {
-      p.log.message('Opening browser for Google sign-in...');
-
-      try {
-        execFileSync(
-          gwsCommand,
-          ['auth', 'login', '-s', 'drive,gmail,calendar,tasks,userinfo.email,userinfo.profile'],
-          {
-            stdio: 'inherit',
-            timeout: 300_000,
-            env: getShellEnv(),
-          }
-        );
-        p.log.success('Google sign-in complete!');
-      } catch {
-        p.log.warn(
-          'Google sign-in did not complete. You can sign in later from the FlowSpace UI.'
-        );
-      }
-    }
-  }
-
-  return { clientSecretPath: CLIENT_SECRET_PATH, configured: true };
+  return { clientSecretPath: '', configured: true };
 }
 
 async function setupAI(): Promise<FlowSpaceConfig['ai']> {
@@ -378,7 +255,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
       message: 'Provider name (display name):',
       placeholder: 'My Provider',
       validate: (value) => {
-        if (!value.trim()) return 'Provider name is required.';
+        if (!value || !value.trim()) return 'Provider name is required.';
         return undefined;
       },
     });
@@ -392,7 +269,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
       message: 'Base URL (OpenAI-compatible endpoint):',
       placeholder: 'https://api.example.com/v1',
       validate: (value) => {
-        if (!value.trim()) return 'Base URL is required.';
+        if (!value || !value.trim()) return 'Base URL is required.';
         try {
           new URL(value.trim());
         } catch {
@@ -421,7 +298,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
       message: 'Model name:',
       placeholder: 'gpt-4o',
       validate: (value) => {
-        if (!value.trim()) return 'Model name is required.';
+        if (!value || !value.trim()) return 'Model name is required.';
         return undefined;
       },
     });
@@ -459,7 +336,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
     message: `Enter your ${aiChoice === 'openai' ? 'OpenAI' : aiChoice === 'anthropic' ? 'Anthropic' : 'OpenRouter'} API key:`,
     placeholder: 'sk-...',
     validate: (value) => {
-      if (!value.trim()) return 'API key is required.';
+      if (!value || !value.trim()) return 'API key is required.';
       if (value.trim().length < 10) return 'That doesn\'t look like a valid API key.';
       return undefined;
     },
@@ -741,15 +618,11 @@ async function runDoctor(): Promise<void> {
     detail: config ? CONFIG_PATH : 'Not found — run: flowspace setup',
   });
 
-  // client_secret.json — check both the FlowSpace data dir and the gws config dir
-  const gwsSecretPath = path.join(os.homedir(), '.config', 'gws', 'client_secret.json');
-  const hasSecret =
-    (fs.existsSync(CLIENT_SECRET_PATH) && hasValidClientSecret(CLIENT_SECRET_PATH)) ||
-    (fs.existsSync(gwsSecretPath) && hasValidClientSecret(gwsSecretPath));
+  // OAuth credentials are injected into the server binary at release time — no file needed
   checks.push({
     name: 'Google OAuth',
-    ok: hasSecret,
-    detail: hasSecret ? 'client_secret.json found' : 'Missing — run: flowspace setup',
+    ok: true,
+    detail: 'Bundled (no setup required)',
   });
 
   // gws CLI
