@@ -588,8 +588,22 @@ let cachedOAuthClientConfig: OAuthClientConfig | null = null;
 function loadOAuthClientConfig(): OAuthClientConfig {
   if (cachedOAuthClientConfig) return cachedOAuthClientConfig;
 
+  // Injected build-time credentials take priority — these are the bundled OAuth client
+  // injected by the release script via esbuild --define (obfuscated in the binary)
+  const injectedClientId: string = typeof __OAUTH_CLIENT_ID__ !== 'undefined' ? __OAUTH_CLIENT_ID__ : '';
+  const injectedClientSecret: string = typeof __OAUTH_CLIENT_SECRET__ !== 'undefined' ? __OAUTH_CLIENT_SECRET__ : '';
+  if (
+    injectedClientId &&
+    injectedClientSecret &&
+    !injectedClientId.includes('__OAUTH') &&
+    !injectedClientSecret.includes('__OAUTH')
+  ) {
+    cachedOAuthClientConfig = { client_id: injectedClientId, client_secret: injectedClientSecret };
+    return cachedOAuthClientConfig;
+  }
+
+  // Dev mode fallback: read from file (no injected credentials when running via tsx)
   const candidatePaths = [
-    // User's gws config (most likely to have real credentials)
     path.join(os.homedir(), '.config', 'gws', 'client_secret.json'),
     path.join(__dirname, 'client_secret.json'),
     path.join(process.cwd(), 'client_secret.json'),
@@ -601,7 +615,6 @@ function loadOAuthClientConfig(): OAuthClientConfig {
     path.join(__dirname, '..', '..', 'Resources', 'client_secret.json'),
   ].filter((value, index, values) => values.indexOf(value) === index);
 
-  // Find the first file with valid (non-placeholder) credentials
   for (const filePath of candidatePaths) {
     if (!fs.existsSync(filePath)) continue;
     try {
@@ -616,20 +629,6 @@ function loadOAuthClientConfig(): OAuthClientConfig {
     } catch {
       continue;
     }
-  }
-
-  // Fall back to credentials injected at build time (obfuscated in binary, no file on disk)
-  // These are replaced by the release script via esbuild --define
-  const injectedClientId: string = typeof __OAUTH_CLIENT_ID__ !== 'undefined' ? __OAUTH_CLIENT_ID__ : '';
-  const injectedClientSecret: string = typeof __OAUTH_CLIENT_SECRET__ !== 'undefined' ? __OAUTH_CLIENT_SECRET__ : '';
-  if (
-    injectedClientId &&
-    injectedClientSecret &&
-    !injectedClientId.includes('__OAUTH') &&
-    !injectedClientSecret.includes('__OAUTH')
-  ) {
-    cachedOAuthClientConfig = { client_id: injectedClientId, client_secret: injectedClientSecret };
-    return cachedOAuthClientConfig;
   }
 
   const tried = candidatePaths.join('\n  - ');
