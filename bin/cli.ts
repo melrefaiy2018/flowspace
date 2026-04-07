@@ -59,6 +59,10 @@ interface FlowSpaceConfig {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function getVersion(): string {
+  // __CLI_VERSION__ is injected at build time via esbuild --define
+  if (typeof __CLI_VERSION__ !== 'undefined' && __CLI_VERSION__ && !__CLI_VERSION__.includes('__CLI')) {
+    return __CLI_VERSION__;
+  }
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
     return pkg.version ?? '0.0.0';
