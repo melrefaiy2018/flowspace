@@ -29,6 +29,7 @@ function ProviderIcon({ id, className }: { id: string; className?: string }) {
     case 'openrouter': return <Globe className={className} />;
     case 'lmstudio': return <Server className={className} />;
     case 'claude-code': return <Terminal className={className} />;
+    case 'codex': return <Zap className={className} />;
     default: return <Settings className={className} />;
   }
 }
@@ -240,7 +241,7 @@ export default function LLMProviderSettings({
   const selectedForm = selectedProvider ? forms[selectedProvider.id] : null;
   const configuredProviders = providers.filter((p) => Boolean(settings?.providers[p.id]));
   const selectedSavedConfig = selectedProvider ? settings?.providers[selectedProvider.id] : null;
-  const showBaseURL = selectedProvider && selectedProvider.id !== 'claude-code';
+  const showBaseURL = selectedProvider && selectedProvider.id !== 'claude-code' && selectedProvider.id !== 'codex';
 
   return (
     <div className="space-y-6">

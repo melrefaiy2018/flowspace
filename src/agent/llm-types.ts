@@ -8,7 +8,7 @@
 // ── Provider identifiers ────────────────────────────────────────────
 
 /** Well-known built-in presets with dedicated UI cards. */
-export type BuiltinProviderId = 'anthropic' | 'openai' | 'openrouter' | 'lmstudio' | 'claude-code';
+export type BuiltinProviderId = 'anthropic' | 'openai' | 'openrouter' | 'lmstudio' | 'claude-code' | 'codex';
 
 /** Any string is a valid provider ID — custom providers use their user-chosen slug. */
 export type LLMProviderId = BuiltinProviderId | (string & {});

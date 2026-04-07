@@ -60,6 +60,17 @@ export const PROVIDER_META: readonly ProviderMeta[] = [
     ],
   },
   {
+    id: 'codex',
+    name: 'Codex (ChatGPT Plus)',
+    requiresKey: false,
+    defaultBaseURL: '',
+    keyPlaceholder: 'not required — uses codex CLI auth',
+    models: [
+      { id: 'o4-mini', label: 'o4-mini (default)' },
+      { id: 'o3', label: 'o3' },
+    ],
+  },
+  {
     id: 'claude-code',
     name: 'Claude Code (CLI)',
     requiresKey: false,

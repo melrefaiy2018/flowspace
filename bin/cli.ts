@@ -213,6 +213,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
       { value: 'openai', label: 'OpenAI', hint: 'GPT-4o, GPT-4' },
       { value: 'anthropic', label: 'Anthropic', hint: 'Claude' },
       { value: 'openrouter', label: 'OpenRouter', hint: 'Multiple models' },
+      { value: 'codex', label: 'Codex (ChatGPT Plus/Pro)', hint: 'Sign in with ChatGPT — no API key needed' },
       { value: 'lmstudio', label: 'LM Studio', hint: 'Local models, no API key needed' },
       { value: 'custom', label: 'Custom (OpenAI-compatible)', hint: 'Any OpenAI-compatible API' },
       { value: 'skip', label: 'Skip for now', hint: 'Dashboard works without AI' },
@@ -227,6 +228,58 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
   if (aiChoice === 'skip') {
     p.log.info('AI skipped. You can configure it later in Settings.');
     return { configured: false };
+  }
+
+  if (aiChoice === 'codex') {
+    // Install @openai/codex globally if not already installed
+    const { execSync } = await import('child_process');
+    let codexFound = false;
+    try {
+      execSync('codex --version', { stdio: 'ignore' });
+      codexFound = true;
+    } catch {
+      // not installed
+    }
+
+    if (!codexFound) {
+      const s = p.spinner();
+      s.start('Installing @openai/codex globally...');
+      try {
+        execSync('npm install -g @openai/codex', { stdio: 'ignore' });
+        s.stop('@openai/codex installed');
+      } catch {
+        s.stop('');
+        p.log.warn('Could not install @openai/codex automatically.');
+        p.log.info('Run manually: npm install -g @openai/codex');
+        p.log.info('Then run: codex login');
+        return { configured: false };
+      }
+    }
+
+    p.log.info('Opening browser for ChatGPT sign-in...');
+    try {
+      execSync('codex login', { stdio: 'inherit' });
+    } catch {
+      p.log.warn('codex login failed or was cancelled.');
+      p.log.info('Run "codex login" manually, then restart flowspace.');
+      return { configured: false };
+    }
+
+    const llmSettings = {
+      activeProvider: 'codex',
+      providers: {
+        codex: {
+          provider: 'codex',
+          apiKey: '',
+          model: 'o4-mini',
+        },
+      },
+    };
+    const settingsPath = path.join(FLOWSPACE_DIR, '.llm-settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify(llmSettings, null, 2), { mode: 0o600 });
+
+    p.log.success('Codex (ChatGPT) configured!');
+    return { configured: true, provider: 'codex' };
   }
 
   if (aiChoice === 'lmstudio') {

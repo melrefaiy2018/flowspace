@@ -11,6 +11,7 @@ import { getActiveProviderConfig } from './llm-settings.js';
 import { createOpenAICompatClient, testOpenAICompatConnection } from './providers/openai-compat.js';
 import { createAnthropicClient, testAnthropicConnection } from './providers/anthropic.js';
 import { createClaudeCodeClient, testClaudeCodeConnection } from './providers/claude-code.js';
+import { createCodexClient, testCodexConnection } from './providers/codex.js';
 
 /**
  * Create an LLM client from explicit config or from persisted settings.
@@ -30,6 +31,10 @@ export function createLLMClient(config?: LLMProviderConfig): LLMClient {
     return createClaudeCodeClient(resolved);
   }
 
+  if (resolved.provider === 'codex') {
+    return createCodexClient(resolved);
+  }
+
   // OpenAI, OpenRouter, LM Studio, and all custom providers use OpenAI-compatible format
   return createOpenAICompatClient(resolved);
 }
@@ -43,6 +48,9 @@ export async function testConnection(config: LLMProviderConfig): Promise<{ succe
   }
   if (config.provider === 'claude-code') {
     return testClaudeCodeConnection(config);
+  }
+  if (config.provider === 'codex') {
+    return testCodexConnection(config);
   }
   return testOpenAICompatConnection(config);
 }
