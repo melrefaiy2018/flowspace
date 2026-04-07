@@ -1123,6 +1123,22 @@ app.post('/api/codex/login', (_req, res) => {
   let output = '';
   let responded = false;
 
+  // Strip ANSI escape sequences (e.g. [94m, [0m, [90m) before regex parsing
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  const tryParse = () => {
+    const clean = stripAnsi(output);
+    // URL: match https://... up to first whitespace
+    const urlMatch = clean.match(/https:\/\/[^\s]+/);
+    // Code: 4 uppercase alphanum, dash, 4-6 uppercase alphanum (e.g. 4VVB-4BHPR)
+    const codeMatch = clean.match(/([A-Z0-9]{4}-[A-Z0-9]{4,6})/);
+    if (urlMatch && codeMatch && !responded) {
+      responded = true;
+      clearTimeout(timeout);
+      res.json({ url: urlMatch[0], code: codeMatch[1] });
+    }
+  };
+
   const timeout = setTimeout(() => {
     if (!responded) {
       responded = true;
@@ -1132,30 +1148,12 @@ app.post('/api/codex/login', (_req, res) => {
 
   proc.stdout?.on('data', (chunk: Buffer) => {
     output += chunk.toString();
-
-    // Parse URL and code from output like:
-    // "Open this link ... https://auth.openai.com/codex/device"
-    // "Enter this one-time code ... XXXX-XXXX"
-    const urlMatch = output.match(/https:\/\/\S+/);
-    const codeMatch = output.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/);
-
-    if (urlMatch && codeMatch && !responded) {
-      responded = true;
-      clearTimeout(timeout);
-      res.json({ url: urlMatch[0], code: codeMatch[1] });
-    }
+    tryParse();
   });
 
   proc.stderr?.on('data', (chunk: Buffer) => {
     output += chunk.toString();
-    // Some versions write to stderr
-    const urlMatch = output.match(/https:\/\/\S+/);
-    const codeMatch = output.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/);
-    if (urlMatch && codeMatch && !responded) {
-      responded = true;
-      clearTimeout(timeout);
-      res.json({ url: urlMatch[0], code: codeMatch[1] });
-    }
+    tryParse();
   });
 
   proc.on('error', (err) => {
