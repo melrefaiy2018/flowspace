@@ -83,11 +83,11 @@ The dashboard works without an AI key — you just won't have the chat agent or 
 ## CLI reference
 
 ```bash
-npx flowspace              # Start (runs setup on first use)
-npx flowspace setup        # Re-run the setup wizard
-npx flowspace doctor       # Check system health
-npx flowspace --port 8080  # Use a custom port (default: 3000)
-npx flowspace --version    # Show version
+npx flowspace-app              # Start (runs setup on first use)
+npx flowspace-app setup        # Re-run the setup wizard
+npx flowspace-app doctor       # Check system health
+npx flowspace-app --port 8080  # Use a custom port (default: 3000)
+npx flowspace-app --version    # Show version
 ```
 
 ## Self-hosting / development
