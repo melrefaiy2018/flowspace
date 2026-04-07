@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowSpace — Technical Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --primary: #1a1a2e;
+    --accent: #4361ee;
+    --accent-light: #eef1ff;
+    --text: #1a1a2e;
+    --text-secondary: #555;
+    --border: #e2e8f0;
+    --bg-code: #f8fafc;
+    --bg-table-header: #f1f5f9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  @page {
+    size: A4;
+    margin: 2cm 2.2cm;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 11pt;
+    background: #fff;
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 2cm 2.2cm;
+  }
+
+  /* Cover page */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 85vh;
+    text-align: center;
+    page-break-after: always;
+  }
+  .cover .logo {
+    font-size: 48pt;
+    font-weight: 700;
+    letter-spacing: -2px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .cover .subtitle {
+    font-size: 16pt;
+    font-weight: 300;
+    color: var(--text-secondary);
+    margin-bottom: 48px;
+  }
+  .cover .meta {
+    font-size: 10pt;
+    color: var(--text-secondary);
+    line-height: 2;
+  }
+  .cover .meta strong {
+    color: var(--text);
+  }
+  .cover .version-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-size: 10pt;
+    font-weight: 500;
+    margin-bottom: 32px;
+  }
+
+  /* Table of contents */
+  .toc {
+    page-break-after: always;
+  }
+  .toc h2 {
+    font-size: 18pt;
+    margin-bottom: 24px;
+    color: var(--primary);
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc-counter;
+  }
+  .toc ol li {
+    counter-increment: toc-counter;
+    padding: 6px 0;
+    border-bottom: 1px dotted var(--border);
+    font-size: 10.5pt;
+  }
+  .toc ol li::before {
+    content: counter(toc-counter) ".";
+    font-weight: 600;
+    color: var(--accent);
+    margin-right: 8px;
+    min-width: 24px;
+    display: inline-block;
+  }
+  .toc ol li a {
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  /* Headings */
+  h1 {
+    font-size: 20pt;
+    font-weight: 700;
+    color: var(--primary);
+    margin: 36px 0 16px 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+    page-break-after: avoid;
+  }
+  h2 {
+    font-size: 14pt;
+    font-weight: 600;
+    color: var(--primary);
+    margin: 28px 0 12px 0;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11.5pt;
+    font-weight: 600;
+    color: var(--text);
+    margin: 20px 0 8px 0;
+    page-break-after: avoid;
+  }
+
+  p { margin-bottom: 10px; }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px 0;
+    font-size: 9.5pt;
+    page-break-inside: auto;
+  }
+  tr { page-break-inside: avoid; }
+  th, td {
+    padding: 7px 10px;
+    text-align: left;
+    border: 1px solid var(--border);
+  }
+  th {
+    background: var(--bg-table-header);
+    font-weight: 600;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  td { vertical-align: top; }
+  tr:nth-child(even) td { background: #fafbfc; }
+
+  /* Code */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9pt;
+    background: var(--bg-code);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  pre {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 12px 0 20px 0;
+    font-size: 8.5pt;
+    line-height: 1.6;
+    page-break-inside: avoid;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  /* Lists */
+  ul, ol {
+    margin: 8px 0 14px 20px;
+  }
+  li { margin-bottom: 4px; }
+
+  /* Callout boxes */
+  .callout {
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 10pt;
+  }
+  .callout strong {
+    color: var(--accent);
+  }
+
+  /* Architecture diagram (ASCII) */
+  .diagram {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0 24px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8pt;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    page-break-inside: avoid;
+  }
+
+  /* Section numbering */
+  .section-num {
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 6px;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 8.5pt;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+
+  /* Page breaks */
+  .page-break { page-break-before: always; }
+
+  /* Metric cards */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .metric-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+  }
+  .metric-card .value {
+    font-size: 20pt;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .metric-card .label {
+    font-size: 8.5pt;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+  }
+
+  @media print {
+    body { padding: 0; max-width: none; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER PAGE ==================== -->
+<div class="cover">
+  <div class="logo">FlowSpace</div>
+  <div class="subtitle">A Personal Google Workspace AI Dashboard</div>
+  <div class="version-badge">v1.2.0</div>
+  <div class="meta">
+    <strong>Technical Report</strong><br>
+    March 2026<br><br>
+    <strong>Author:</strong> Mohamed El Refaiy<br>
+    <strong>Repository:</strong> github.com/moelrefaiy/flowspace<br>
+    <strong>Stack:</strong> React 19 &middot; Express &middot; Tauri v2 &middot; GLM-4.7<br>
+    <strong>License:</strong> Open Source (BYO OAuth)
+  </div>
+</div>
+
+<!-- ==================== TABLE OF CONTENTS ==================== -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#s1">Executive Summary</a></li>
+    <li><a href="#s2">System Architecture</a></li>
+    <li><a href="#s3">Server Layer (Express API)</a></li>
+    <li><a href="#s4">AI Agent System</a></li>
+    <li><a href="#s5">Frontend Application</a></li>
+    <li><a href="#s6">Desktop Application (Tauri v2)</a></li>
+    <li><a href="#s7">Authentication &amp; Multi-Account</a></li>
+    <li><a href="#s8">Data Flow &amp; Caching</a></li>
+    <li><a href="#s9">Tool System &amp; Approval Workflow</a></li>
+    <li><a href="#s10">Memory &amp; Personalization</a></li>
+    <li><a href="#s11">Build, Test &amp; Deployment</a></li>
+    <li><a href="#s12">Technology Stack</a></li>
+    <li><a href="#s13">Security Model</a></li>
+    <li><a href="#s14">Key Files &amp; Metrics</a></li>
+    <li><a href="#s15">Design Decisions &amp; Trade-offs</a></li>
+    <li><a href="#s16">Future Roadmap</a></li>
+  </ol>
+</div>
+
+<!-- ==================== 1. EXECUTIVE SUMMARY ==================== -->
+<h1 id="s1"><span class="section-num">1</span> Executive Summary</h1>
+
+<p>
+<strong>FlowSpace</strong> is a full-stack personal productivity application that consolidates
+Google Workspace services &mdash; Drive, Gmail, Calendar, and Tasks &mdash; into a single,
+AI-augmented dashboard. It delivers real-time workspace intelligence through an embedded
+conversational agent capable of reading from and writing to all connected Google services
+via a tool-calling loop.
+</p>
+
+<p>The system ships in three deployment forms:</p>
+<ul>
+  <li><strong>Web application</strong> &mdash; Express + Vite on <code>localhost:3000</code></li>
+  <li><strong>macOS desktop application</strong> &mdash; Tauri v2 with bundled Node.js runtime</li>
+  <li><strong>Docker container</strong> &mdash; Node 22 Alpine, single-command deployment</li>
+</ul>
+
+<div class="metrics">
+  <div class="metric-card">
+    <div class="value">3,633</div>
+    <div class="label">Lines &mdash; Server</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">23</div>
+    <div class="label">AI Tools</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">34+</div>
+    <div class="label">UI Components</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">20+</div>
+    <div class="label">API Endpoints</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">~200 MB</div>
+    <div class="label">Desktop App Size</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">v1.2.0</div>
+    <div class="label">Current Release</div>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Open-source model:</strong> FlowSpace is being prepared for open-source release with a
+  "Bring Your Own OAuth" approach &mdash; users provide their own Google Cloud credentials. No
+  centralized backend required.
+</div>
+
+<!-- ==================== 2. SYSTEM ARCHITECTURE ==================== -->
+<h1 id="s2" class="page-break"><span class="section-num">2</span> System Architecture</h1>
+
+<p>
+FlowSpace follows a <strong>two-layer monolith</strong> pattern: a single Express.js server
+serves both the REST/SSE API and the frontend assets. In development, Vite's dev server
+is mounted as Express middleware for hot module replacement. In production, pre-built
+static files are served directly.
+</p>
+
+<div class="diagram">
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         FlowSpace Architecture                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│   ┌──────────────┐          ┌──────────────────────────────────────┐   │
+│   │  Tauri v2     │          │          Express Server (3000)       │   │
+│   │  macOS Shell  │─────────▶│                                      │   │
+│   │  (lib.rs)     │  WebView │  ┌─────────┐  ┌─────────────────┐  │   │
+│   └──────────────┘          │  │  REST    │  │  SSE /api/chat   │  │   │
+│                              │  │  API     │  │  (streaming)     │  │   │
+│   ┌──────────────┐          │  │  20+     │  │                   │  │   │
+│   │  Browser      │─────────▶│  │ endpts  │  │  ┌─────────────┐ │  │   │
+│   │  (localhost)  │   HTTP   │  └────┬────┘  │  │ Tool-Calling│ │  │   │
+│   └──────────────┘          │       │        │  │ Loop (max 5)│ │  │   │
+│                              │       ▼        │  └──────┬──────┘ │  │   │
+│                              │  ┌─────────┐  │         │         │  │   │
+│                              │  │ In-Mem  │  │         ▼         │  │   │
+│                              │  │ Cache   │  │  ┌─────────────┐  │  │   │
+│                              │  │ (60s)   │  │  │  23 Tools   │  │  │   │
+│                              │  └─────────┘  │  │ (gws CLI)   │  │  │   │
+│                              │               │  └──────┬──────┘  │  │   │
+│                              └───────┬───────┴─────────┼─────────┘  │   │
+│                                      │                 │             │   │
+│                   ┌──────────────────┼─────────────────┼──────┐     │   │
+│                   ▼                  ▼                 ▼      │     │   │
+│           ┌─────────────┐  ┌──────────────┐  ┌────────────┐ │     │   │
+│           │ Google APIs  │  │   Z.AI LLM   │  │  gws CLI   │ │     │   │
+│           │ Drive/Gmail/ │  │  (GLM-4.7)   │  │ Subprocess │ │     │   │
+│           │ Calendar/    │  │  OpenAI-compat│  │ (execFile) │ │     │   │
+│           │ Tasks        │  └──────────────┘  └────────────┘ │     │   │
+│           └─────────────┘                                     │     │   │
+│                   External Services                           │     │   │
+│                   ────────────────────────────────────────────┘     │   │
+│                                                                     │   │
+│   Storage (~/Library/Application Support/FlowSpace/)               │   │
+│   ├── .accounts.json              (multi-account manifest)          │   │
+│   ├── .gws-credentials.*.json     (OAuth tokens per account)       │   │
+│   ├── .memory/*.json              (long-term AI memory)             │   │
+│   ├── .dynamic-tools.json         (custom tool definitions)         │   │
+│   └── .followup-state.json        (commitment tracker)              │   │
+│                                                                     │   │
+│   Browser Storage                                                   │   │
+│   └── localStorage                (conversations, preferences)      │   │
+└─────────────────────────────────────────────────────────────────────┘</div>
+
+<h2>Component Breakdown</h2>
+<table>
+  <tr>
+    <th>Layer</th>
+    <th>Technology</th>
+    <th>Responsibility</th>
+  </tr>
+  <tr>
+    <td>Frontend SPA</td>
+    <td>React 19, Tailwind CSS v4, Framer Motion</td>
+    <td>Dashboard UI, chat interface, email triage, calendar views</td>
+  </tr>
+  <tr>
+    <td>API Server</td>
+    <td>Express 4.21, TypeScript, tsx runtime</td>
+    <td>REST endpoints, SSE chat streaming, auth orchestration</td>
+  </tr>
+  <tr>
+    <td>AI Agent</td>
+    <td>OpenAI SDK &rarr; Z.AI (GLM-4.7)</td>
+    <td>Conversational AI with tool-calling across Google services</td>
+  </tr>
+  <tr>
+    <td>Desktop Shell</td>
+    <td>Tauri v2 (Rust), tauri-plugin-shell</td>
+    <td>macOS native window, server process lifecycle</td>
+  </tr>
+  <tr>
+    <td>CLI Bridge</td>
+    <td>gws (Google Workspace CLI)</td>
+    <td>OAuth flow, credential management, Google API execution</td>
+  </tr>
+</table>
+
+<!-- ==================== 3. SERVER LAYER ==================== -->
+<h1 id="s3" class="page-break"><span class="section-num">3</span> Server Layer (Express API)</h1>
+
+<p>
+The server (<code>server.ts</code>, 3,633 lines) is a single Express application that handles
+authentication, data aggregation, AI chat orchestration, and static file serving. It is
+the central coordinator for all application logic.
+</p>
+
+<h2>3.1 API Endpoints</h2>
+
+<table>
+  <tr><th>Category</th><th>Endpoint</th><th>Method</th><th>Description</th></tr>
+  <tr>
+    <td rowspan="7">Authentication</td>
+    <td><code>/api/auth/status</code></td><td>GET</td><td>Auth state + user profile</td>
+  </tr>
+  <tr><td><code>/api/auth/gws-status</code></td><td>GET</td><td>Check gws CLI installation &amp; login</td></tr>
+  <tr><td><code>/api/auth/gws-install</code></td><td>POST</td><td>Install gws CLI via npm</td></tr>
+  <tr><td><code>/api/auth/gws-login</code></td><td>POST</td><td>Trigger Google OAuth flow</td></tr>
+  <tr><td><code>/api/auth/gws-import</code></td><td>POST</td><td>Export &amp; save credentials</td></tr>
+  <tr><td><code>/api/auth/logout</code></td><td>POST</td><td>Clear auth state</td></tr>
+  <tr><td><code>/api/accounts/*</code></td><td>GET/POST/DELETE</td><td>Multi-account management</td></tr>
+  <tr>
+    <td rowspan="5">Workspace Data</td>
+    <td><code>/api/stats</code></td><td>GET</td><td>Aggregated workspace statistics</td>
+  </tr>
+  <tr><td><code>/api/drive/recent</code></td><td>GET</td><td>Recent Drive files</td></tr>
+  <tr><td><code>/api/gmail/threads</code></td><td>GET</td><td>Gmail thread list with pagination</td></tr>
+  <tr><td><code>/api/calendar/upcoming</code></td><td>GET</td><td>Calendar events (N-day window)</td></tr>
+  <tr><td><code>/api/tasks</code></td><td>GET</td><td>Open tasks across all lists</td></tr>
+  <tr>
+    <td rowspan="3">AI &amp; Chat</td>
+    <td><code>/api/chat</code></td><td>POST (SSE)</td><td>Streaming AI conversation with tools</td>
+  </tr>
+  <tr><td><code>/api/chat/runs</code></td><td>GET</td><td>Run history (last 24h)</td></tr>
+  <tr><td><code>/api/chat/runs/:id/approve</code></td><td>POST</td><td>Approve pending write action</td></tr>
+  <tr>
+    <td rowspan="3">Intelligence</td>
+    <td><code>/api/briefing</code></td><td>GET</td><td>AI-generated daily briefing (10-min cache)</td>
+  </tr>
+  <tr><td><code>/api/followups</code></td><td>GET</td><td>Commitment tracking</td></tr>
+  <tr><td><code>/api/activity/recent</code></td><td>GET</td><td>Merged activity feed</td></tr>
+</table>
+
+<h2>3.2 In-Memory Cache</h2>
+<p>
+All read endpoints use a 60-second TTL in-memory cache to minimize Google API calls.
+Cache keys are scoped per endpoint. The briefing endpoint uses a longer 10-minute TTL
+as its content changes less frequently and requires an LLM call to generate.
+</p>
+
+<h2>3.3 Run Tracking</h2>
+<p>
+Each chat interaction spawns a "run" tracked in an in-memory <code>Map&lt;string, RunRecord&gt;</code>
+with 24-hour auto-pruning. Runs transition through states:
+<code>queued</code> &rarr; <code>running</code> &rarr; <code>awaiting_approval</code> | <code>completed</code> | <code>failed</code>.
+The frontend's RunCenter component visualizes this pipeline.
+</p>
+
+<!-- ==================== 4. AI AGENT ==================== -->
+<h1 id="s4" class="page-break"><span class="section-num">4</span> AI Agent System</h1>
+
+<p>
+The AI agent is the core differentiator of FlowSpace. It converts natural language
+instructions into concrete actions across Google Workspace, using a multi-round
+tool-calling loop.
+</p>
+
+<h2>4.1 LLM Integration</h2>
+<table>
+  <tr><th>Property</th><th>Value</th></tr>
+  <tr><td>Provider</td><td>Z.AI (OpenAI-compatible endpoint)</td></tr>
+  <tr><td>Model</td><td>GLM-4.7 (by ZhipuAI / Alibaba)</td></tr>
+  <tr><td>API Base</td><td><code>https://api.z.ai/api/coding/paas/v4</code></td></tr>
+  <tr><td>SDK</td><td>OpenAI Node.js SDK v6.27</td></tr>
+  <tr><td>Max Tool Rounds</td><td>5 per conversation turn</td></tr>
+  <tr><td>Streaming</td><td>Server-Sent Events (SSE)</td></tr>
+  <tr><td>Configurable</td><td>Yes &mdash; LLM provider/model changeable via Settings</td></tr>
+</table>
+
+<h2>4.2 Chat Loop Architecture</h2>
+<pre><code>User sends message
+  │
+  ▼
+buildSystemPrompt(timezone, persona, threadBrief, memories)
+  │
+  ▼
+┌─── Tool-Calling Loop (max 5 rounds) ─────────────────────────┐
+│  1. Send messages + system prompt to LLM                      │
+│  2. LLM responds with tool_calls[] or final text              │
+│  3. For each tool_call:                                       │
+│     ├── isWriteTool? → buildApprovalRequest() → pause for UI  │
+│     └── Read tool? → executeTool() → append result            │
+│  4. Extract memories from tool results                        │
+│  5. Append tool results to message history                    │
+│  6. Loop back to step 1                                       │
+└───────────────────────────────────────────────────────────────┘
+  │
+  ▼
+Emit assistant_complete with structured blocks + suggestions</code></pre>
+
+<h2>4.3 System Prompt</h2>
+<p>
+The system prompt (~160 lines) is dynamically constructed per request. It includes:
+the current date/time in the user's timezone, persistent thread context (brief),
+retrieved long-term memories, tool usage guidelines, and output formatting rules
+(structured JSON blocks, 2-3 follow-up suggestions).
+</p>
+
+<h2>4.4 Tool Taxonomy</h2>
+<table>
+  <tr><th>Category</th><th>Tools</th><th>Approval Required</th></tr>
+  <tr>
+    <td><strong>Read (14)</strong></td>
+    <td>search_drive, search_emails, read_email, list_drive_files,
+        list_calendar_events, list_tasks, docs_read, sheets_read,
+        calendar_agenda, gmail_triage, review_overdue_tasks, standup_report,
+        meeting_prep, weekly_digest</td>
+    <td>No</td>
+  </tr>
+  <tr>
+    <td><strong>Write (9)</strong></td>
+    <td>send_email, create_calendar_event, create_task, create_drive_folder,
+        docs_write, sheets_create, sheets_append, sheets_update, drive_upload</td>
+    <td><strong>Yes</strong></td>
+  </tr>
+  <tr>
+    <td><strong>Bulk Inbox (8)</strong></td>
+    <td>archive_email_threads, trash_email_threads, restore_email_threads,
+        mute_email_threads, mark_threads_read, apply_label_to_threads,
+        unsubscribe_from_sender, create_gmail_filter</td>
+    <td><strong>Yes</strong></td>
+  </tr>
+  <tr>
+    <td><strong>Meta (1)</strong></td>
+    <td>create_tool (dynamic tool composition)</td>
+    <td>No</td>
+  </tr>
+</table>
+
+<h2>4.5 Tool Execution</h2>
+<p>
+All Google Workspace operations are executed through the <strong>gws CLI</strong> as a subprocess
+(<code>execFile</code>, not shell). The access token is passed via the
+<code>GOOGLE_WORKSPACE_CLI_TOKEN</code> environment variable &mdash; never as a command-line argument.
+Each tool call has a 30-second timeout and supports abort signals.
+</p>
+
+<!-- ==================== 5. FRONTEND ==================== -->
+<h1 id="s5" class="page-break"><span class="section-num">5</span> Frontend Application</h1>
+
+<h2>5.1 Technology</h2>
+<table>
+  <tr><th>Framework</th><td>React 19 with JSX transform</td></tr>
+  <tr><th>Bundler</th><td>Vite 6 with HMR</td></tr>
+  <tr><th>Styling</th><td>Tailwind CSS v4 (utility-first) + CSS custom properties</td></tr>
+  <tr><th>Animations</th><td>Framer Motion (motion) v12</td></tr>
+  <tr><th>Icons</th><td>Lucide React v0.546</td></tr>
+  <tr><th>State</th><td>React Context (ChatContext) + localStorage persistence</td></tr>
+  <tr><th>Routing</th><td>In-app view switching (no React Router)</td></tr>
+</table>
+
+<h2>5.2 Application Layout</h2>
+<pre><code>┌──────────┬───────────────────────────────────┬──────────────┐
+│          │                                   │              │
+│  AppRail │         Main Content Area          │  Chat Panel  │
+│ (sidebar)│                                   │  (slide-in)  │
+│          │  ┌─────────────────────────────┐  │              │
+│  • Home  │  │  HomeDashboard              │  │  ChatThread  │
+│  • Gmail │  │  - Greeting + Briefing      │  │  - Messages  │
+│  • Cal   │  │  - YourDayPanel             │  │  - Tools     │
+│  • Tasks │  │  - AttentionPanel           │  │  - Approvals │
+│  • Runs  │  │  - InboxTriage              │  │  - Blocks    │
+│  • ···   │  │  - FollowupPanel            │  │              │
+│          │  └─────────────────────────────┘  │              │
+│  Convos  │                                   │              │
+│  ------  │  OR: GmailPage | CalendarPage     │              │
+│  • Today │      | TasksPage | SettingsPage   │              │
+│  • Yday  │      | RunCenter | SkillsPage     │              │
+│          │                                   │              │
+└──────────┴───────────────────────────────────┴──────────────┘</code></pre>
+
+<h2>5.3 Key Components</h2>
+<table>
+  <tr><th>Component</th><th>Size</th><th>Responsibility</th></tr>
+  <tr><td><code>ChatThread.tsx</code></td><td>~45 KB</td><td>Message rendering with markdown, structured blocks (triage, agenda, sheets, drafts), tool activity log, approval UI</td></tr>
+  <tr><td><code>SettingsPage.tsx</code></td><td>~45 KB</td><td>LLM provider config, persona customization, account management</td></tr>
+  <tr><td><code>ChatContext.tsx</code></td><td>~31 KB</td><td>Conversations state, message history, approval workflow, thread groups</td></tr>
+  <tr><td><code>RunCenter.tsx</code></td><td>~23 KB</td><td>Run dashboard with status badges, error details, success metrics</td></tr>
+  <tr><td><code>InboxTriage.tsx</code></td><td>~18 KB</td><td>AI-categorized email buckets (urgent/review/low-priority), bulk actions</td></tr>
+  <tr><td><code>HomeDashboard.tsx</code></td><td>~17 KB</td><td>Daily briefing, attention items, calendar summary, activity feed</td></tr>
+  <tr><td><code>AppRail.tsx</code></td><td>~11 KB</td><td>Collapsible sidebar, conversation list, navigation, account switcher</td></tr>
+</table>
+
+<h2>5.4 Structured Response Blocks</h2>
+<p>
+The chat agent returns structured blocks that the frontend renders as rich UI cards:
+</p>
+<table>
+  <tr><th>Block Type</th><th>Rendering</th></tr>
+  <tr><td><code>triage</code></td><td>Email buckets with urgency levels and inline actions</td></tr>
+  <tr><td><code>agenda</code></td><td>Calendar events with attendees, locations, and linked docs</td></tr>
+  <tr><td><code>email_draft</code></td><td>Editable draft card with send/edit buttons</td></tr>
+  <tr><td><code>sheet_data</code></td><td>Spreadsheet table with headers and rows</td></tr>
+  <tr><td><code>bulk_action_preview</code></td><td>Preview of inbox actions with undo capability</td></tr>
+  <tr><td><code>file_list</code> / <code>email_list</code> / <code>event_list</code></td><td>Linked item lists with metadata</td></tr>
+  <tr><td><code>fact_list</code></td><td>Key-value pairs (stats, summaries)</td></tr>
+</table>
+
+<!-- ==================== 6. TAURI DESKTOP ==================== -->
+<h1 id="s6" class="page-break"><span class="section-num">6</span> Desktop Application (Tauri v2)</h1>
+
+<p>
+FlowSpace ships as a native macOS application using <strong>Tauri v2</strong>, a Rust-based
+framework that provides a lightweight alternative to Electron (~200 MB vs ~500 MB+).
+</p>
+
+<h2>6.1 Architecture</h2>
+<p>
+The Tauri shell (<code>lib.rs</code>, 112 lines) spawns the Express server as a child process,
+waits for it to become ready on port 3000, then navigates its WebView to
+<code>http://localhost:3000</code>. This approach allows the same codebase to run in both
+browser and desktop modes.
+</p>
+
+<h2>6.2 Bundled Resources</h2>
+<table>
+  <tr><th>Resource</th><th>Purpose</th></tr>
+  <tr><td><code>resources/node</code></td><td>Bundled Node.js binary (no system dependency)</td></tr>
+  <tr><td><code>dist-server/server.mjs</code></td><td>esbuild-bundled Express server</td></tr>
+  <tr><td><code>dist/</code></td><td>Vite-built frontend assets</td></tr>
+  <tr><td><code>resources/client_secret.json</code></td><td>Google OAuth client configuration</td></tr>
+  <tr><td><code>resources/gws</code></td><td>Bundled gws CLI binary</td></tr>
+</table>
+
+<h2>6.3 Server Lifecycle</h2>
+<pre><code>App Launch
+  ├── Set FLOWSPACE_PRODUCTION=1
+  ├── Augment PATH (/opt/homebrew/bin, /usr/local/bin, ...)
+  ├── Spawn: node server.mjs
+  ├── Poll TCP:3000 (60 × 500ms = 30s timeout)
+  ├── Navigate WebView → http://localhost:3000
+  └── On WindowEvent::Destroyed → kill server process</code></pre>
+
+<h2>6.4 Build Targets</h2>
+<ul>
+  <li><strong><code>FlowSpace.app</code></strong> &mdash; macOS application bundle</li>
+  <li><strong><code>FlowSpace.dmg</code></strong> &mdash; Disk image installer</li>
+  <li>Code signing and notarization supported for distribution</li>
+  <li>Minimum macOS version: 10.13 (High Sierra)</li>
+</ul>
+
+<!-- ==================== 7. AUTHENTICATION ==================== -->
+<h1 id="s7" class="page-break"><span class="section-num">7</span> Authentication &amp; Multi-Account</h1>
+
+<h2>7.1 OAuth Flow</h2>
+<p>
+FlowSpace delegates OAuth entirely to the <strong>gws CLI</strong> (Google Workspace CLI),
+eliminating the need for users to create a Google Cloud project or configure OAuth
+client secrets.
+</p>
+
+<div class="diagram">
+User clicks "Sign in with Google"
+     │
+     ▼
+[1] GET /api/auth/gws-status
+     │── gws not installed? → POST /api/auth/gws-install
+     │── gws not authenticated? → continue
+     ▼
+[2] POST /api/auth/gws-login
+     │── Spawns: gws auth login -s drive,gmail,calendar,tasks,userinfo
+     │── Opens browser → Google consent screen
+     │── User authorizes → gws stores token
+     ▼
+[3] POST /api/auth/gws-import
+     │── Spawns: gws auth export --unmasked
+     │── Parses JSON credentials
+     │── Saves to .gws-credentials.{accountKey}.json
+     │── Upserts account record in .accounts.json
+     ▼
+[4] GET /api/auth/status → { authenticated: true, user: {...} }</div>
+
+<h2>7.2 Credential Hierarchy</h2>
+<p>When resolving credentials, the system tries sources in order:</p>
+<ol>
+  <li><strong>Active account</strong> &mdash; <code>.accounts.json</code> → active account's credential file</li>
+  <li><strong>Legacy credentials</strong> &mdash; <code>.gws-credentials.json</code> (single-account fallback)</li>
+  <li><strong>OAuth2 web flow</strong> &mdash; <code>.tokens.json</code></li>
+  <li><strong>Application Default Credentials</strong> &mdash; <code>~/.config/gcloud/application_default_credentials.json</code> (dev-only)</li>
+</ol>
+
+<h2>7.3 Multi-Account Support</h2>
+<p>
+FlowSpace supports multiple Google accounts. Each account is stored as an entry in
+<code>.accounts.json</code> with its own credential file. Users can switch accounts via the
+sidebar account menu. All data (cache, conversations, preferences) is scoped per account.
+</p>
+
+<!-- ==================== 8. DATA FLOW ==================== -->
+<h1 id="s8" class="page-break"><span class="section-num">8</span> Data Flow &amp; Caching</h1>
+
+<h2>8.1 Request Pipeline</h2>
+<pre><code>Frontend Hook (useApiData)
+  → fetch('/api/...')
+    → Express Route Handler
+      → getCached(key)?
+        ├── HIT  → return cached data (< 60s old)
+        └── MISS → getActiveAuthContext()
+                    → Google API call (googleapis SDK)
+                    → setCached(key, result)
+                    → return result</code></pre>
+
+<h2>8.2 Cache Configuration</h2>
+<table>
+  <tr><th>Cache Key</th><th>TTL</th><th>Source</th></tr>
+  <tr><td><code>stats</code></td><td>60s</td><td>Parallel: Drive + Gmail + Calendar + Tasks</td></tr>
+  <tr><td><code>drive_recent</code></td><td>60s</td><td>Drive Files API (recent, sorted by viewedByMeTime)</td></tr>
+  <tr><td><code>gmail_recent</code></td><td>60s</td><td>Gmail Messages API (INBOX, maxResults=10)</td></tr>
+  <tr><td><code>calendar_upcoming</code></td><td>60s</td><td>Calendar Events API (next 7 days)</td></tr>
+  <tr><td><code>briefing</code></td><td>10 min</td><td>LLM-generated summary (expensive operation)</td></tr>
+  <tr><td><code>activity_recent</code></td><td>60s</td><td>Merged feed: Drive + Gmail + Calendar</td></tr>
+</table>
+
+<h2>8.3 Frontend State</h2>
+<table>
+  <tr><th>Storage</th><th>Data</th><th>Scope</th></tr>
+  <tr><td>React Context</td><td>Active conversations, messages, pending approvals</td><td>Session</td></tr>
+  <tr><td>localStorage</td><td>Conversation history, preferences, collapsed state</td><td>Per-account, persistent</td></tr>
+  <tr><td>Server Memory</td><td>Run records, cache, auth state</td><td>Server lifetime</td></tr>
+  <tr><td>Filesystem</td><td>Credentials, memories, follow-ups, dynamic tools</td><td>Persistent (DATA_DIR)</td></tr>
+</table>
+
+<!-- ==================== 9. TOOL SYSTEM ==================== -->
+<h1 id="s9" class="page-break"><span class="section-num">9</span> Tool System &amp; Approval Workflow</h1>
+
+<h2>9.1 Approval Flow for Write Operations</h2>
+<p>
+All write tools (sending emails, creating events, modifying spreadsheets, etc.) require
+explicit user approval before execution. This prevents the AI from taking unintended
+actions on the user's behalf.
+</p>
+
+<pre><code>LLM returns tool_call for write operation (e.g., send_email)
+  │
+  ▼
+buildApprovalRequest(toolName, args)
+  │── Creates ApprovalRequest with:
+  │   • title, summary
+  │   • editable fields (to, subject, body, ...)
+  │   • before/after preview (when applicable)
+  │
+  ▼
+Emit ChatStreamEvent { type: 'tool_event', status: 'approval_required' }
+  │── Run status → 'awaiting_approval'
+  │── Frontend shows approval card in ChatThread
+  │
+  ▼
+User reviews and clicks "Approve" or "Dismiss"
+  │
+  ├── Approve → POST /api/chat/runs/:runId/approve
+  │              → executeTool() with approved args
+  │              → emit result, continue chat loop
+  │
+  └── Dismiss → dismissApproval()
+               → tool_call marked as rejected
+               → LLM informed, may suggest alternative</code></pre>
+
+<h2>9.2 Dynamic Tool Composition</h2>
+<p>
+Users can create custom tools by composing existing tools into multi-step workflows.
+These are stored in <code>.dynamic-tools.json</code> and loaded into the tool registry at runtime.
+</p>
+<pre><code>// Example: Custom "expense tracker" tool
+{
+  "name": "log_expense",
+  "description": "Log an expense to the team spreadsheet",
+  "steps": [
+    { "action": "sheets_read", "args": { "spreadsheet_id": "abc123" }, "outputKey": "sheet" },
+    { "action": "sheets_append", "args": { "spreadsheet_id": "abc123", "values": "{{input}}" } }
+  ]
+}</code></pre>
+
+<!-- ==================== 10. MEMORY ==================== -->
+<h1 id="s10"><span class="section-num">10</span> Memory &amp; Personalization</h1>
+
+<h2>10.1 Long-Term Memory</h2>
+<p>
+The AI agent maintains a long-term memory system that persists across conversations.
+Memories are stored as JSON files in <code>.memory/{userHash}.json</code> within <code>DATA_DIR</code>.
+</p>
+
+<table>
+  <tr><th>Component</th><th>File</th><th>Responsibility</th></tr>
+  <tr><td>Memory Store</td><td><code>memory-store.ts</code></td><td>CRUD operations on memory entries</td></tr>
+  <tr><td>Memory Retriever</td><td><code>memory-retriever.ts</code></td><td>Retrieve relevant memories for context injection</td></tr>
+  <tr><td>Memory Extractor</td><td><code>memory-extractor.ts</code></td><td>Extract memorable facts from tool results</td></tr>
+</table>
+
+<h2>10.2 Persona System</h2>
+<p>
+Users can customize the AI agent's personality and behavior through the Persona Settings.
+The persona prompt is injected into the system prompt, influencing tone, formality, and
+response style. Personas are stored per-account in <code>.persona.{accountKey}.json</code>.
+</p>
+
+<h2>10.3 Importance Feedback</h2>
+<p>
+The briefing system includes preference learning: users can mark items as more or less
+important, and these preferences influence future briefing generation. Feedback is stored
+via <code>/api/briefing/save-preference</code>.
+</p>
+
+<!-- ==================== 11. BUILD & DEPLOY ==================== -->
+<h1 id="s11" class="page-break"><span class="section-num">11</span> Build, Test &amp; Deployment</h1>
+
+<h2>11.1 Build Pipeline</h2>
+<table>
+  <tr><th>Command</th><th>What It Does</th></tr>
+  <tr><td><code>make install</code></td><td><code>npm ci</code> &mdash; clean install from lockfile</td></tr>
+  <tr><td><code>make dev</code></td><td><code>npm run dev</code> &mdash; Tailwind watch + tsx server (HMR)</td></tr>
+  <tr><td><code>make build</code></td><td><code>npm run build</code> &mdash; Tailwind build + Vite production build</td></tr>
+  <tr><td><code>make prod</code></td><td><code>NODE_ENV=production tsx server.ts</code></td></tr>
+  <tr><td><code>make typecheck</code></td><td><code>tsc --noEmit</code> &mdash; full type check</td></tr>
+  <tr><td><code>make tauri-build</code></td><td>Bundle sidecars + <code>tauri build</code> (signed + notarized)</td></tr>
+  <tr><td><code>make docker</code></td><td>Two-stage Docker build (Node 22 Alpine)</td></tr>
+</table>
+
+<h2>11.2 Testing</h2>
+<table>
+  <tr><th>Property</th><th>Value</th></tr>
+  <tr><td>Framework</td><td>Vitest 4.0 + @vitest/coverage-v8</td></tr>
+  <tr><td>Test Environment</td><td>Node (default), jsdom (component tests)</td></tr>
+  <tr><td>Test Utilities</td><td>@testing-library/react, @testing-library/dom</td></tr>
+  <tr><td>Test Location</td><td><code>src/**/__tests__/</code> (co-located)</td></tr>
+  <tr><td>Coverage Target</td><td>80%+ on business logic</td></tr>
+  <tr><td>Commands</td><td><code>npm test</code>, <code>npm run test:watch</code>, <code>npm run test:coverage</code></td></tr>
+</table>
+
+<h2>11.3 Docker</h2>
+<pre><code># Stage 1: Build
+FROM node:22-alpine AS builder
+RUN apk add python3 make g++    # native deps (better-sqlite3, sharp)
+COPY . .
+RUN npm ci && npm run build
+
+# Stage 2: Production
+FROM node:22-alpine
+COPY --from=builder /app/dist ./dist
+COPY server.ts tsconfig.json src/agent/ ...
+RUN npm ci --production
+EXPOSE 3000
+CMD ["npx", "tsx", "server.ts"]</code></pre>
+
+<h2>11.4 Deployment Matrix</h2>
+<table>
+  <tr><th>Target</th><th>Method</th><th>Artifact</th></tr>
+  <tr><td>Local development</td><td><code>make dev</code></td><td>localhost:3000 (HMR)</td></tr>
+  <tr><td>Production web</td><td><code>make prod</code> or Docker</td><td>Express on port 3000</td></tr>
+  <tr><td>macOS desktop</td><td><code>make tauri-build</code></td><td>FlowSpace.app + .dmg</td></tr>
+  <tr><td>Docker</td><td><code>make docker && make docker-run</code></td><td>Container image (~500 MB)</td></tr>
+</table>
+
+<!-- ==================== 12. TECHNOLOGY STACK ==================== -->
+<h1 id="s12" class="page-break"><span class="section-num">12</span> Technology Stack</h1>
+
+<table>
+  <tr><th>Category</th><th>Technology</th><th>Version</th><th>Purpose</th></tr>
+  <tr><td rowspan="5">Core Runtime</td>
+    <td>Node.js</td><td>20+</td><td>Server runtime</td></tr>
+  <tr><td>TypeScript</td><td>5.8.2</td><td>Type safety (full-stack)</td></tr>
+  <tr><td>Express</td><td>4.21.2</td><td>HTTP server &amp; API</td></tr>
+  <tr><td>tsx</td><td>4.21.0</td><td>TypeScript execution (dev + prod)</td></tr>
+  <tr><td>Vite</td><td>6.2.0</td><td>Frontend bundler + HMR dev server</td></tr>
+
+  <tr><td rowspan="4">Frontend</td>
+    <td>React</td><td>19.0.0</td><td>UI framework</td></tr>
+  <tr><td>Tailwind CSS</td><td>4.1.14</td><td>Utility-first styling</td></tr>
+  <tr><td>Framer Motion</td><td>12.23.24</td><td>Animations &amp; transitions</td></tr>
+  <tr><td>Lucide React</td><td>0.546.0</td><td>Icon library</td></tr>
+
+  <tr><td rowspan="2">Google APIs</td>
+    <td>googleapis</td><td>171.4.0</td><td>Drive, Gmail, Calendar, Tasks clients</td></tr>
+  <tr><td>google-auth-library</td><td>10.6.1</td><td>OAuth2 token management</td></tr>
+
+  <tr><td rowspan="1">AI</td>
+    <td>OpenAI SDK</td><td>6.27.0</td><td>LLM client (OpenAI-compatible for Z.AI)</td></tr>
+
+  <tr><td rowspan="2">Desktop</td>
+    <td>Tauri</td><td>2.10.1</td><td>macOS app shell (Rust)</td></tr>
+  <tr><td>tauri-plugin-shell</td><td>2.0</td><td>Subprocess management</td></tr>
+
+  <tr><td rowspan="3">Testing</td>
+    <td>Vitest</td><td>4.0.18</td><td>Test runner</td></tr>
+  <tr><td>@vitest/coverage-v8</td><td>4.0.18</td><td>Code coverage</td></tr>
+  <tr><td>@testing-library/react</td><td>16.3.2</td><td>Component testing</td></tr>
+
+  <tr><td rowspan="2">Optional</td>
+    <td>Supabase</td><td>2.99.1</td><td>Optional backend services</td></tr>
+  <tr><td>better-sqlite3</td><td>12.4.1</td><td>Optional local database</td></tr>
+</table>
+
+<!-- ==================== 13. SECURITY ==================== -->
+<h1 id="s13" class="page-break"><span class="section-num">13</span> Security Model</h1>
+
+<h2>13.1 Authentication Security</h2>
+<ul>
+  <li>OAuth2 flow delegated to Google via gws CLI (no custom OAuth server)</li>
+  <li>Credentials stored in user's home directory with filesystem permissions</li>
+  <li>Access tokens refreshed automatically; refresh tokens never exposed to frontend</li>
+  <li>Token passed to gws CLI via environment variable, never command-line argument</li>
+</ul>
+
+<h2>13.2 Data Privacy</h2>
+<ul>
+  <li><strong>Conversations:</strong> Stored in browser localStorage (never sent to a server)</li>
+  <li><strong>Memories:</strong> Stored in user's local filesystem (DATA_DIR)</li>
+  <li><strong>No telemetry:</strong> No analytics, tracking, or data collection</li>
+  <li><strong>No cloud backend:</strong> All processing happens locally (except LLM API calls)</li>
+</ul>
+
+<h2>13.3 Write Protection</h2>
+<ul>
+  <li>All write operations require explicit user approval via the approval workflow</li>
+  <li>Bulk inbox actions show preview of affected items before execution</li>
+  <li>Undo capability for inbox actions via audit log</li>
+  <li>Max 5 tool-calling rounds prevents runaway execution</li>
+</ul>
+
+<h2>13.4 Code-Level Safeguards</h2>
+<ul>
+  <li>No <code>eval()</code> or dynamic code execution</li>
+  <li>Subprocess execution via <code>execFile</code> (not <code>exec</code>/shell) prevents injection</li>
+  <li>Error messages sanitized before sending to client (no stack traces)</li>
+  <li>CSP headers configured in Tauri for desktop builds</li>
+  <li><code>.gitignore</code> excludes all credential and token files</li>
+</ul>
+
+<!-- ==================== 14. KEY FILES ==================== -->
+<h1 id="s14" class="page-break"><span class="section-num">14</span> Key Files &amp; Metrics</h1>
+
+<h2>14.1 File Manifest</h2>
+<table>
+  <tr><th>File</th><th>Lines</th><th>Purpose</th></tr>
+  <tr><td><code>server.ts</code></td><td>3,633</td><td>Express API, auth, chat orchestration, Google APIs</td></tr>
+  <tr><td><code>src/agent/tools.ts</code></td><td>2,252</td><td>23 tool definitions, approval builder, gws execution</td></tr>
+  <tr><td><code>src/App.tsx</code></td><td>1,323</td><td>Auth gate, layout, view routing</td></tr>
+  <tr><td><code>src/agent/chat.ts</code></td><td>806</td><td>Chat loop, LLM client, streaming, memory</td></tr>
+  <tr><td><code>src/services/api.ts</code></td><td>~700</td><td>Typed API client with all endpoint wrappers</td></tr>
+  <tr><td><code>src/components/ChatThread.tsx</code></td><td>~1,200</td><td>Message display, blocks, markdown</td></tr>
+  <tr><td><code>src/context/ChatContext.tsx</code></td><td>~850</td><td>State management, conversations</td></tr>
+  <tr><td><code>src-tauri/src/lib.rs</code></td><td>112</td><td>Tauri setup, server spawn</td></tr>
+  <tr><td><code>Makefile</code></td><td>107</td><td>Development and build targets</td></tr>
+  <tr><td><code>Dockerfile</code></td><td>32</td><td>Multi-stage container build</td></tr>
+</table>
+
+<h2>14.2 Project Metrics</h2>
+<div class="metrics">
+  <div class="metric-card">
+    <div class="value">~12K</div>
+    <div class="label">Total Lines (TypeScript)</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">34+</div>
+    <div class="label">React Components</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">23</div>
+    <div class="label">AI Tool Definitions</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">20+</div>
+    <div class="label">API Endpoints</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">15</div>
+    <div class="label">NPM Dependencies</div>
+  </div>
+  <div class="metric-card">
+    <div class="value">3</div>
+    <div class="label">Deployment Targets</div>
+  </div>
+</div>
+
+<!-- ==================== 15. DESIGN DECISIONS ==================== -->
+<h1 id="s15" class="page-break"><span class="section-num">15</span> Design Decisions &amp; Trade-offs</h1>
+
+<table>
+  <tr><th>Decision</th><th>Rationale</th><th>Trade-off</th></tr>
+  <tr>
+    <td>Express monolith</td>
+    <td>Single process serves API + frontend. Simpler deployment, shared auth context, no CORS.</td>
+    <td>Cannot scale API and frontend independently.</td>
+  </tr>
+  <tr>
+    <td>gws CLI for auth</td>
+    <td>Zero GCP setup for users. No project creation, no client secrets to manage.</td>
+    <td>Runtime dependency on gws CLI binary.</td>
+  </tr>
+  <tr>
+    <td>In-memory cache</td>
+    <td>No database required. Fast dashboard loads. Simple implementation.</td>
+    <td>Data is eventually consistent (60s stale). Lost on server restart.</td>
+  </tr>
+  <tr>
+    <td>SSE for chat</td>
+    <td>Standard HTTP streaming. No WebSocket complexity. Works through proxies.</td>
+    <td>Unidirectional &mdash; approval responses require separate POST.</td>
+  </tr>
+  <tr>
+    <td>Tauri over Electron</td>
+    <td>~200 MB vs ~500 MB+. Native performance. Rust for reliability.</td>
+    <td>macOS-only currently. Smaller ecosystem than Electron.</td>
+  </tr>
+  <tr>
+    <td>localStorage for chat</td>
+    <td>Private by default. No cloud dependency. Immediate persistence.</td>
+    <td>Not synced across devices. Storage limited (~5-10 MB).</td>
+  </tr>
+  <tr>
+    <td>Tool approval flow</td>
+    <td>Prevents AI from taking unintended actions. User remains in control.</td>
+    <td>Adds friction to write operations. Cannot fully automate workflows.</td>
+  </tr>
+  <tr>
+    <td>GLM-4.7 default</td>
+    <td>Cost-effective. Good tool-calling support. OpenAI-compatible API.</td>
+    <td>Less capable than GPT-4/Claude for complex reasoning. Configurable as mitigation.</td>
+  </tr>
+</table>
+
+<!-- ==================== 16. ROADMAP ==================== -->
+<h1 id="s16"><span class="section-num">16</span> Future Roadmap</h1>
+
+<h2>16.1 Open-Source Release</h2>
+<p>
+FlowSpace is being prepared for open-source distribution with a "Bring Your Own OAuth"
+model. Key changes include:
+</p>
+<ul>
+  <li><strong>BYO OAuth credentials</strong> &mdash; Users provide their own Google Cloud OAuth client</li>
+  <li><strong><code>npx</code> CLI installer</strong> &mdash; One-command setup via <code>npx flowspace</code></li>
+  <li><strong>Fresh repository</strong> &mdash; Clean git history for public release</li>
+  <li><strong>Configurable LLM provider</strong> &mdash; Already implemented (Settings page)</li>
+</ul>
+
+<h2>16.2 Planned Enhancements</h2>
+<ul>
+  <li>Cross-platform desktop builds (Windows, Linux via Tauri v2)</li>
+  <li>Plugin system for third-party tool extensions</li>
+  <li>Collaborative features (shared workspace views)</li>
+  <li>Offline mode with SQLite-backed cache</li>
+  <li>Enhanced memory system with semantic search</li>
+</ul>
+
+<!-- ==================== FOOTER ==================== -->
+<div class="footer">
+  <p>
+    <strong>FlowSpace Technical Report</strong> &mdash; v1.2.0 &mdash; March 2026<br>
+    Generated from source analysis of the FlowSpace repository.<br>
+    For questions or contributions, see the project repository.
+  </p>
+</div>
+
+</body>
+</html>

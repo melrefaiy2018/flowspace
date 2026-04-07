@@ -45,12 +45,14 @@ const APP_VERSION: string = typeof __FLOWSPACE_VERSION__ !== 'undefined'
   ? __FLOWSPACE_VERSION__
   : JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version;
 
-// In production (sidecar), use ~/Library/Application Support/FlowSpace for writable data.
+// In production (sidecar/Docker), use ~/Library/Application Support/FlowSpace for writable data.
 // In dev, use the project root.
+// FLOWSPACE_DATA_DIR overrides all — used by Docker (set HOME=/data so os.homedir()=/data).
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const DATA_DIR = IS_PRODUCTION
-  ? path.join(os.homedir(), 'Library', 'Application Support', 'FlowSpace')
-  : __dirname;
+const DATA_DIR = process.env.FLOWSPACE_DATA_DIR
+  ?? (IS_PRODUCTION
+    ? path.join(os.homedir(), 'Library', 'Application Support', 'FlowSpace')
+    : __dirname);
 
 // Ensure data directory exists in production
 if (IS_PRODUCTION && !fs.existsSync(DATA_DIR)) {
@@ -1124,6 +1126,14 @@ app.get('/api/codex/login/poll', (_req, res) => {
   if (!bin) return res.json({ authenticated: false, reason: 'codex binary not found' });
   const { authenticated, reason } = checkCodexAuth();
   res.json({ authenticated, reason });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/health — lightweight liveness probe for Docker/k8s healthchecks
+// ---------------------------------------------------------------------------
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------

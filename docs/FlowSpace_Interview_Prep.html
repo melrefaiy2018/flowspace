@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowSpace — Interview Prep Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --primary: #1a1a2e;
+    --accent: #4361ee;
+    --accent-light: #eef1ff;
+    --green: #059669;
+    --green-light: #ecfdf5;
+    --red: #dc2626;
+    --red-light: #fef2f2;
+    --orange: #d97706;
+    --orange-light: #fffbeb;
+    --purple: #7c3aed;
+    --purple-light: #f5f3ff;
+    --text: #1a1a2e;
+    --text-secondary: #555;
+    --border: #e2e8f0;
+    --bg-code: #f8fafc;
+    --bg-table-header: #f1f5f9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  @page {
+    size: A4;
+    margin: 1.8cm 2cm;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text);
+    line-height: 1.75;
+    font-size: 10.5pt;
+    background: #fff;
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 1.8cm 2cm;
+  }
+
+  /* Cover */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 85vh;
+    text-align: center;
+    page-break-after: always;
+  }
+  .cover .logo { font-size: 42pt; font-weight: 800; color: var(--accent); letter-spacing: -2px; }
+  .cover .subtitle { font-size: 15pt; font-weight: 300; color: var(--text-secondary); margin: 8px 0 12px; }
+  .cover .tagline {
+    font-size: 11pt; color: var(--text-secondary); max-width: 420px; margin: 0 auto 40px;
+    line-height: 1.7;
+  }
+  .cover .badge {
+    display: inline-block; background: var(--accent); color: #fff;
+    padding: 6px 20px; border-radius: 20px; font-size: 10pt; font-weight: 600; margin-bottom: 36px;
+  }
+  .cover .meta { font-size: 9.5pt; color: var(--text-secondary); line-height: 2.2; }
+  .cover .meta strong { color: var(--text); }
+
+  /* Headings */
+  h1 {
+    font-size: 18pt; font-weight: 800; color: var(--primary);
+    margin: 36px 0 14px; padding-bottom: 8px;
+    border-bottom: 3px solid var(--accent);
+    page-break-after: avoid;
+  }
+  h2 {
+    font-size: 13pt; font-weight: 700; color: var(--primary);
+    margin: 26px 0 10px; page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11pt; font-weight: 600; color: var(--text);
+    margin: 18px 0 6px; page-break-after: avoid;
+  }
+  p { margin-bottom: 10px; }
+
+  /* Q&A blocks */
+  .qa {
+    margin: 16px 0;
+    page-break-inside: avoid;
+  }
+  .q {
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: 0 8px 0 0;
+    font-weight: 600;
+    font-size: 10.5pt;
+    color: var(--accent);
+  }
+  .q::before {
+    content: "Q: ";
+    font-weight: 800;
+  }
+  .a {
+    background: #fafbfc;
+    border-left: 4px solid #cbd5e1;
+    padding: 12px 14px;
+    border-radius: 0 0 8px 0;
+    font-size: 10.5pt;
+    line-height: 1.75;
+  }
+  .a::before {
+    content: "A: ";
+    font-weight: 700;
+    color: var(--green);
+  }
+
+  /* Teach blocks */
+  .teach {
+    background: var(--green-light);
+    border-left: 4px solid var(--green);
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10pt;
+  }
+  .teach strong { color: var(--green); }
+  .teach::before {
+    content: "Key Insight: ";
+    font-weight: 700;
+    color: var(--green);
+  }
+
+  /* Warning / gotcha blocks */
+  .gotcha {
+    background: var(--orange-light);
+    border-left: 4px solid var(--orange);
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10pt;
+  }
+  .gotcha::before {
+    content: "Interview Gotcha: ";
+    font-weight: 700;
+    color: var(--orange);
+  }
+
+  /* Buzzword / talking point */
+  .buzzwords {
+    background: var(--purple-light);
+    border-left: 4px solid var(--purple);
+    padding: 10px 16px;
+    margin: 14px 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 10pt;
+  }
+  .buzzwords::before {
+    content: "Keywords to use: ";
+    font-weight: 700;
+    color: var(--purple);
+  }
+
+  /* Comparison tables */
+  table {
+    width: 100%; border-collapse: collapse;
+    margin: 12px 0 18px; font-size: 9.5pt;
+    page-break-inside: auto;
+  }
+  tr { page-break-inside: avoid; }
+  th, td { padding: 7px 10px; text-align: left; border: 1px solid var(--border); }
+  th { background: var(--bg-table-header); font-weight: 600; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.3px; }
+  td { vertical-align: top; }
+  tr:nth-child(even) td { background: #fafbfc; }
+
+  /* Code */
+  code {
+    font-family: 'JetBrains Mono', monospace; font-size: 9pt;
+    background: var(--bg-code); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border);
+  }
+  pre {
+    background: #1e293b; color: #e2e8f0; border-radius: 8px;
+    padding: 16px 18px; overflow-x: auto; margin: 12px 0 18px;
+    font-size: 8.5pt; line-height: 1.6; font-family: 'JetBrains Mono', monospace;
+    page-break-inside: avoid;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; }
+
+  ul, ol { margin: 8px 0 14px 20px; }
+  li { margin-bottom: 5px; }
+
+  .section-num { color: var(--accent); font-weight: 800; margin-right: 6px; }
+  .page-break { page-break-before: always; }
+
+  /* Scorecard */
+  .scorecard {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0;
+  }
+  .score-item {
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+  }
+  .score-item .label { font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+  .score-item .value { font-size: 11pt; font-weight: 700; margin-top: 2px; }
+  .score-good .value { color: var(--green); }
+  .score-warn .value { color: var(--orange); }
+
+  .footer {
+    margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border);
+    font-size: 8.5pt; color: var(--text-secondary); text-align: center;
+  }
+
+  @media print {
+    body { padding: 0; max-width: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER ==================== -->
+<div class="cover">
+  <div class="logo">FlowSpace</div>
+  <div class="subtitle">Interview Prep &amp; Deep-Dive Guide</div>
+  <div class="tagline">
+    This document teaches you the <em>reasoning</em> behind every architectural decision
+    in FlowSpace. Each section is structured as interviewer questions + confident answers,
+    with key insights, gotchas, and buzzwords to use.
+  </div>
+  <div class="badge">Study Guide v1.0</div>
+  <div class="meta">
+    <strong>For:</strong> Mohamed El Refaiy<br>
+    <strong>Project:</strong> FlowSpace v1.2.0<br>
+    <strong>Date:</strong> March 2026<br>
+    <strong>Format:</strong> Q&amp;A + Teaching Notes + Gotchas
+  </div>
+</div>
+
+<!-- ==================== TOC ==================== -->
+<div style="page-break-after: always;">
+  <h2 style="font-size: 16pt; margin-bottom: 20px;">How to Use This Guide</h2>
+  <p>Each section follows this pattern:</p>
+  <ol>
+    <li><strong>Context</strong> &mdash; What the interviewer is really asking and why</li>
+    <li><strong>Q&amp;A blocks</strong> &mdash; Exact questions you might hear, with confident answers</li>
+    <li><strong>Key Insights</strong> (green) &mdash; The deeper understanding that separates you from other candidates</li>
+    <li><strong>Interview Gotchas</strong> (orange) &mdash; Follow-up traps and how to handle them</li>
+    <li><strong>Keywords</strong> (purple) &mdash; Technical terms that signal expertise</li>
+  </ol>
+
+  <h2 style="font-size: 16pt; margin: 28px 0 16px;">Sections</h2>
+  <ol style="font-size: 10.5pt; line-height: 2.2;">
+    <li>The 30-Second Pitch (What Is FlowSpace?)</li>
+    <li>Architecture: Why a Monolith?</li>
+    <li>Authentication: Why gws CLI Instead of Standard OAuth?</li>
+    <li>AI Agent: Why Tool-Calling Over RAG?</li>
+    <li>Streaming: Why SSE Over WebSockets?</li>
+    <li>Caching: Why In-Memory Over Redis/DB?</li>
+    <li>Frontend: Why React Context Over Redux/Zustand?</li>
+    <li>Desktop: Why Tauri Over Electron?</li>
+    <li>Approval Workflow: Why Human-in-the-Loop?</li>
+    <li>State &amp; Storage: Why localStorage Over a Database?</li>
+    <li>The Tool System: Design &amp; Extensibility</li>
+    <li>Error Handling &amp; Resilience</li>
+    <li>Security Deep-Dive</li>
+    <li>Testing Strategy</li>
+    <li>Deployment &amp; Distribution</li>
+    <li>Trade-offs You Consciously Made</li>
+    <li>What You Would Do Differently (Self-Awareness Questions)</li>
+    <li>System Design Whiteboard Walkthrough</li>
+  </ol>
+</div>
+
+<!-- ==================== 1. THE PITCH ==================== -->
+<h1 id="s1" class="page-break"><span class="section-num">1</span> The 30-Second Pitch</h1>
+
+<p>Every interview starts here. You need to explain FlowSpace clearly in under a minute.</p>
+
+<div class="qa">
+  <div class="q">Tell me about a project you've built recently.</div>
+  <div class="a">
+    I built FlowSpace, a personal Google Workspace dashboard that consolidates Drive, Gmail,
+    Calendar, and Tasks into a single AI-augmented interface. The core differentiator is an
+    embedded conversational agent that can both <em>read from</em> and <em>write to</em> all
+    connected Google services using a tool-calling loop. It ships as a web app, a Docker
+    container, and a native macOS desktop app via Tauri v2. The stack is TypeScript end-to-end:
+    React 19 frontend, Express API server, and a Rust shell for the desktop build.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">What problem does it solve?</div>
+  <div class="a">
+    Knowledge workers context-switch between 4-5 Google apps dozens of times a day. FlowSpace
+    eliminates that by giving you one view with AI-generated briefings, email triage, calendar
+    prep, and a chat agent that can take action on your behalf &mdash; like drafting emails,
+    creating events, or organizing your inbox &mdash; all with an approval step so you stay in control.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">What's the scale of this project?</div>
+  <div class="a">
+    About 12,000 lines of TypeScript across server and client, 23 AI tool definitions,
+    20+ API endpoints, 34 React components, and a 112-line Rust shell for the desktop app.
+    It's a single-developer project, which influenced many of the architectural choices &mdash;
+    I optimized for velocity and simplicity over horizontal scalability.
+  </div>
+</div>
+
+<div class="teach">
+    Always frame your project in terms of the <em>problem it solves</em>, not just the tech.
+    Interviewers want to see product thinking. "I built it because I was frustrated by X"
+    is more compelling than "I wanted to try React 19."
+</div>
+
+<div class="buzzwords">
+    AI-augmented productivity, tool-calling agent, full-stack TypeScript, monolith-first architecture,
+    native desktop via Tauri, human-in-the-loop approval workflow
+</div>
+
+<!-- ==================== 2. ARCHITECTURE ==================== -->
+<h1 id="s2" class="page-break"><span class="section-num">2</span> Architecture: Why a Monolith?</h1>
+
+<p>This is the #1 architecture question you'll face. Interviewers expect you to justify <em>not</em> using microservices.</p>
+
+<div class="qa">
+  <div class="q">Why did you choose a monolithic architecture instead of microservices?</div>
+  <div class="a">
+    Three reasons. First, <strong>team size</strong>: this is a single-developer project. Microservices
+    add operational overhead (service discovery, inter-service auth, distributed tracing) that only
+    pays off with multiple teams working independently. Second, <strong>shared context</strong>: the
+    API server, auth layer, and AI chat all need access to the same Google OAuth credentials and
+    in-memory cache &mdash; splitting them into separate services would mean duplicating auth state
+    or adding a shared session store. Third, <strong>deployment simplicity</strong>: a single Express
+    process can serve both the API and the frontend, which makes the Tauri desktop bundle trivial
+    &mdash; I just spawn one Node process and point the WebView at it.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">When would you break it apart?</div>
+  <div class="a">
+    If the AI chat workload needed to scale independently from the dashboard reads &mdash; for example,
+    if chat requests were CPU-bound and starving the simple GET endpoints. I'd extract the
+    <code>/api/chat</code> SSE endpoint into its own service first, since it's the only long-lived
+    connection. The REST endpoints are stateless and could move behind a gateway later. I'd also
+    split if multiple developers needed to ship different parts on different cadences.
+  </div>
+</div>
+
+<div class="teach">
+    The "monolith vs microservices" question is really about <strong>understanding trade-offs</strong>.
+    Never say "monolith bad" or "microservices good." The right answer is always "it depends on
+    team size, deployment requirements, and where the complexity boundaries are." For a single-developer
+    project with shared state, a monolith is the <em>correct</em> engineering decision, not a shortcut.
+</div>
+
+<div class="gotcha">
+    "But doesn't a monolith mean you can't scale?" No. A monolith can scale vertically
+    (bigger machine) and horizontally (multiple instances behind a load balancer) as long as
+    shared state is externalized. FlowSpace's state is per-user (filesystem + localStorage),
+    so horizontal scaling is straightforward if needed.
+</div>
+
+<div class="buzzwords">
+    monolith-first, shared-nothing architecture, vertical scaling, deployment unit, service boundary,
+    Conway's Law, operational overhead
+</div>
+
+<!-- ==================== 3. AUTH ==================== -->
+<h1 id="s3" class="page-break"><span class="section-num">3</span> Authentication: Why gws CLI Instead of Standard OAuth?</h1>
+
+<p>This question tests whether you understand OAuth deeply enough to know when to deviate from the standard flow.</p>
+
+<div class="qa">
+  <div class="q">Why didn't you use a standard OAuth2 web flow?</div>
+  <div class="a">
+    A standard OAuth2 web flow requires the user to create a Google Cloud project, enable APIs,
+    configure an OAuth consent screen, and download a client secret &mdash; that's a 15-minute setup
+    before they can even try the app. Since FlowSpace is open-source and designed for personal use,
+    I wanted <strong>zero-configuration onboarding</strong>. The gws CLI already handles the OAuth
+    dance with its own registered client, so users just click "Sign in with Google," authorize in
+    the browser, and FlowSpace imports the credentials. The trade-off is a runtime dependency on
+    the gws CLI binary, but I bundle it in the Tauri desktop build and auto-install it in the web version.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Walk me through the credential flow. Where are tokens stored?</div>
+  <div class="a">
+    The flow has four steps. First, we check if gws CLI is installed (<code>/api/auth/gws-status</code>).
+    If not, we install it via npm. Then we trigger <code>gws auth login</code>, which opens the browser
+    for Google consent. After authorization, we call <code>gws auth export --unmasked</code> to get
+    the access token, refresh token, client ID, and client secret as JSON. We save this to a
+    per-account credential file in the app's data directory &mdash;
+    <code>~/Library/Application Support/FlowSpace/.gws-credentials.{email}.json</code>.
+    The access token is short-lived (1 hour); we refresh it using the refresh token and client
+    credentials via Google's token endpoint. Critically, tokens never touch the frontend &mdash;
+    they stay server-side, and the gws CLI receives tokens via environment variables, never
+    command-line arguments (which would be visible in <code>ps</code> output).
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">How do you handle multiple Google accounts?</div>
+  <div class="a">
+    There's an <code>.accounts.json</code> manifest that lists all connected accounts with their
+    email, display name, and a pointer to their credential file. The server maintains an
+    "active account" concept &mdash; all API calls use the active account's OAuth client. Switching
+    accounts is a POST to <code>/api/accounts/switch</code> that changes the active account ID
+    and clears the in-memory cache so data refreshes. On the frontend, conversations are
+    scoped per account in localStorage using the account key as a namespace.
+  </div>
+</div>
+
+<div class="teach">
+    The credential hierarchy (active account &rarr; legacy single-account &rarr; OAuth2 web tokens
+    &rarr; Application Default Credentials) is a pattern called <strong>fallback chain</strong>.
+    It ensures backward compatibility as the auth system evolved: users who authenticated before
+    multi-account was added still work, and developers can use their gcloud ADC for local testing.
+    This is a real-world migration strategy &mdash; never break existing users when adding new features.
+</div>
+
+<div class="gotcha">
+    "Isn't it insecure to store credentials on disk?" All major tools do this &mdash; gcloud, aws-cli,
+    kubectl, Docker. The credentials are in the user's home directory with standard filesystem
+    permissions. The alternative (a remote token store) would require its own authentication,
+    creating a chicken-and-egg problem. For a local-first app, filesystem storage with proper
+    permissions is the standard approach.
+</div>
+
+<div class="buzzwords">
+    OAuth2 authorization code flow, refresh token rotation, credential delegation,
+    fallback chain, zero-configuration onboarding, token hygiene, principle of least privilege
+</div>
+
+<!-- ==================== 4. AI AGENT ==================== -->
+<h1 id="s4" class="page-break"><span class="section-num">4</span> AI Agent: Why Tool-Calling Over RAG?</h1>
+
+<p>This is your chance to show you understand modern AI application patterns deeply.</p>
+
+<div class="qa">
+  <div class="q">How does the AI agent work?</div>
+  <div class="a">
+    It uses a <strong>tool-calling loop</strong> pattern. The user sends a message, we append it to
+    the conversation history along with a system prompt, and send it to the LLM (GLM-4.7 via Z.AI's
+    OpenAI-compatible API). The LLM can either respond with text or request one or more tool calls.
+    If it requests tools, we execute them, append the results to the conversation, and send it back
+    to the LLM. This loops up to 5 times per turn. The LLM decides which tools to call based on
+    the user's intent &mdash; it has 23 tools covering read, write, and workflow operations across
+    all Google services.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Why tool-calling instead of RAG?</div>
+  <div class="a">
+    RAG (Retrieval-Augmented Generation) is for when you have a static knowledge base that you want
+    the LLM to reason over. FlowSpace's data is <em>live and dynamic</em> &mdash; your unread emails
+    change every minute, your calendar changes throughout the day. There's nothing to pre-embed.
+    Instead, tools let the LLM make real-time API calls: "search_emails for budget reports" returns
+    the actual current emails. And critically, FlowSpace needs to <em>take actions</em>, not just
+    retrieve information &mdash; sending emails, creating events, archiving threads. RAG can't do
+    that. Tool-calling is the right pattern when you need real-time data access and write operations.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Why GLM-4.7? Why not GPT-4 or Claude?</div>
+  <div class="a">
+    Two reasons: cost and configurability. GLM-4.7 provides strong tool-calling capability at a
+    fraction of the cost of GPT-4. For a personal productivity tool making dozens of API calls per
+    session, cost matters. But I designed the system to be <strong>provider-agnostic</strong> &mdash;
+    the LLM client uses the OpenAI SDK's compatibility mode, and the Settings page lets users
+    configure any OpenAI-compatible provider (OpenAI, Anthropic via proxy, local models via Ollama).
+    The model choice is a runtime configuration, not an architectural coupling.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Why cap it at 5 tool rounds?</div>
+  <div class="a">
+    Safety and cost. Each round involves an LLM call (which costs tokens) plus one or more Google
+    API calls (which have rate limits). Without a cap, a confused model could loop indefinitely &mdash;
+    calling search, not finding results, rephrasing, searching again. Five rounds is enough for
+    complex multi-step workflows (e.g., "find my meeting with Sarah, get the agenda doc, summarize it")
+    while preventing runaway execution. If the model hasn't resolved the task in 5 rounds,
+    it's better to ask the user to clarify than to keep guessing.
+  </div>
+</div>
+
+<div class="teach">
+    The tool-calling pattern is sometimes called "ReAct" (Reasoning + Acting). The key insight is
+    that the LLM acts as an <strong>orchestrator</strong>, not a data store. It reasons about what
+    information it needs, calls tools to get it, reasons about the results, and decides the next
+    action. Your tools are the LLM's "hands" &mdash; they should be atomic, well-documented, and
+    predictable. The system prompt is the LLM's "training manual" for how to use those hands.
+</div>
+
+<div class="gotcha">
+    "What if the LLM hallucinates a tool call?" Every tool execution is wrapped in try/catch
+    with typed error classification (auth_expired, rate_limited, tool_timeout, validation_failed).
+    Invalid arguments fail at the gws CLI level with a clear error, which is fed back to the LLM
+    so it can self-correct. The approval workflow for write tools is the ultimate safety net &mdash;
+    even if the LLM generates a wrong email draft, the user sees it before it's sent.
+</div>
+
+<div class="buzzwords">
+    ReAct pattern, tool-calling loop, function calling, agentic AI, orchestrator pattern,
+    provider-agnostic, OpenAI-compatible API, token budget, graceful degradation
+</div>
+
+<!-- ==================== 5. STREAMING ==================== -->
+<h1 id="s5" class="page-break"><span class="section-num">5</span> Streaming: Why SSE Over WebSockets?</h1>
+
+<div class="qa">
+  <div class="q">Why Server-Sent Events instead of WebSockets for the chat?</div>
+  <div class="a">
+    Three reasons. First, <strong>directionality</strong>: chat streaming is fundamentally
+    server-to-client. The user sends a message via a regular POST, then the server streams back
+    chunks, tool events, and the final response. SSE is purpose-built for this one-way flow.
+    WebSockets would give me bidirectional communication that I don't need, adding complexity
+    for no benefit. Second, <strong>HTTP compatibility</strong>: SSE works over standard HTTP/1.1,
+    goes through proxies, load balancers, and CDNs without special configuration. WebSockets
+    require an upgrade handshake that some corporate proxies block. Third, <strong>simplicity</strong>:
+    SSE is just <code>res.write()</code> on an Express response with <code>text/event-stream</code>
+    content type. No library needed. WebSockets need a separate server (<code>ws</code>) or
+    Socket.io with its own connection lifecycle.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">But SSE is one-way. How does the user approve a pending action?</div>
+  <div class="a">
+    Approval is a separate POST request to <code>/api/chat/runs/:runId/approve</code>. This is
+    actually a cleaner separation of concerns: the SSE stream is for <em>observing</em> the run
+    (progress events, tool activity, final response), and REST endpoints are for <em>interacting</em>
+    with it (approve, dismiss, cancel). Mixing control signals into the data stream would make
+    the protocol harder to reason about.
+  </div>
+</div>
+
+<div class="teach">
+    The rule of thumb: use SSE when data flows one way (server &rarr; client), use WebSockets when
+    you need true bidirectional real-time communication (collaborative editing, multiplayer games, live chat
+    between users). Most "real-time" features in web apps are actually one-way broadcasts that SSE
+    handles perfectly &mdash; notifications, live feeds, streaming AI responses, stock tickers.
+</div>
+
+<div class="gotcha">
+    "What about reconnection?" SSE has built-in reconnection with <code>Last-Event-ID</code>.
+    If the connection drops, the browser automatically reconnects and sends the last event ID
+    so the server can resume. WebSockets require you to implement this yourself. This is another
+    reason SSE wins for streaming use cases.
+</div>
+
+<div class="buzzwords">
+    Server-Sent Events, unidirectional streaming, text/event-stream, HTTP/1.1 compatibility,
+    automatic reconnection, separation of concerns (observation vs. interaction)
+</div>
+
+<!-- ==================== 6. CACHING ==================== -->
+<h1 id="s6" class="page-break"><span class="section-num">6</span> Caching: Why In-Memory Over Redis/DB?</h1>
+
+<div class="qa">
+  <div class="q">You're using a simple in-memory cache with 60-second TTL. Why not Redis?</div>
+  <div class="a">
+    This is a <strong>single-user, single-process</strong> application. Redis solves the problem
+    of sharing cache across multiple server instances &mdash; but FlowSpace runs one Express process
+    per user (or per desktop app). There's no cache to share. Adding Redis would mean adding an
+    external dependency (install, configure, monitor) for zero architectural benefit. The in-memory
+    Map with TTL is ~15 lines of code, has zero latency (no network hop), and is perfectly reliable
+    for a single-process app.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">What happens when the server restarts? You lose the cache.</div>
+  <div class="a">
+    Yes, and that's fine. The cache exists purely to avoid hammering Google APIs with repeated
+    identical requests within a short window (like when the dashboard loads and fetches stats,
+    recent files, emails, and events nearly simultaneously). A cold cache just means the first
+    request after restart takes slightly longer. There's no critical state in the cache &mdash;
+    it's all derivable from Google APIs. If I needed persistent caching, I'd use SQLite (which
+    is already a dependency) rather than Redis, keeping the deployment footprint small.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Why 60 seconds? Why not longer?</div>
+  <div class="a">
+    It's a balance between API rate limit protection and data freshness. Google APIs have per-user
+    rate limits (typically 10 requests/second for Gmail). A 60-second TTL means rapid page
+    navigation won't trigger redundant API calls. But 60 seconds is short enough that when a user
+    archives an email or creates an event, they'll see the updated state on their next natural
+    interaction. The briefing endpoint uses a 10-minute TTL because it requires an LLM call, which
+    is expensive and the content (daily summary) doesn't change often.
+  </div>
+</div>
+
+<div class="teach">
+    Cache design always answers three questions: <strong>What</strong> to cache (derived, expensive-to-compute data),
+    <strong>When</strong> to invalidate (TTL for time-based, event-based for mutations), and
+    <strong>Where</strong> to store it (in-process for single instance, distributed for multi-instance).
+    The simplest correct answer wins. Don't add infrastructure complexity to solve a problem
+    you don't have.
+</div>
+
+<div class="buzzwords">
+    TTL-based eviction, cache-aside pattern, cold start, rate limit protection,
+    data freshness vs. API cost trade-off, YAGNI principle
+</div>
+
+<!-- ==================== 7. FRONTEND STATE ==================== -->
+<h1 id="s7" class="page-break"><span class="section-num">7</span> Frontend: Why React Context Over Redux/Zustand?</h1>
+
+<div class="qa">
+  <div class="q">Why React Context for state management instead of Redux or Zustand?</div>
+  <div class="a">
+    The state in FlowSpace is <strong>colocated with a single concern</strong>: the chat experience.
+    ChatContext manages conversations, messages, approvals, and thread groups. It's one context
+    provider wrapping the app. Redux shines when you have <em>many independent state slices</em>
+    that need to be composed and when multiple unrelated components need to subscribe to
+    specific slices without re-rendering everything. FlowSpace's state is more like a tree &mdash;
+    conversation &rarr; messages &rarr; tool events &mdash; which maps naturally to a single context
+    with <code>useContext</code>. Adding Redux would mean boilerplate (actions, reducers, selectors)
+    for a state shape that doesn't benefit from it.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Don't you get performance issues with Context re-renders?</div>
+  <div class="a">
+    Yes, that's a real concern. When any value in the context changes, all consumers re-render.
+    I mitigate this in two ways: first, the context value is memoized, so only meaningful state
+    changes trigger re-renders. Second, heavy rendering components like ChatThread receive
+    individual messages as props, not the full conversation &mdash; so React's reconciliation
+    only updates the changed message, not the entire thread. For a single-user app with modest
+    component counts, this is performant enough. If I saw render bottlenecks in profiling,
+    I'd reach for Zustand (lighter than Redux, selector-based subscriptions) before Redux.
+  </div>
+</div>
+
+<div class="teach">
+    The honest answer is: <strong>React Context is sufficient for single-concern state in a
+    medium-complexity app</strong>. The "you need Redux" advice comes from large team environments
+    where state is spread across dozens of domains. For a personal project with one state tree,
+    Context + useMemo + prop drilling where appropriate is cleaner and faster to develop.
+    Know when to reach for more &mdash; that's what interviewers are testing.
+</div>
+
+<div class="buzzwords">
+    Context API, colocated state, render optimization, memoization, selector-based subscriptions,
+    prop drilling, state colocation principle
+</div>
+
+<!-- ==================== 8. TAURI ==================== -->
+<h1 id="s8" class="page-break"><span class="section-num">8</span> Desktop: Why Tauri Over Electron?</h1>
+
+<div class="qa">
+  <div class="q">Why Tauri v2 instead of Electron for the desktop app?</div>
+  <div class="a">
+    <strong>Bundle size and resource usage.</strong> Electron ships an entire Chromium browser
+    (~150 MB) plus a Node.js runtime. Tauri uses the system's native WebView (WebKit on macOS),
+    so the Rust binary itself is tiny. The FlowSpace desktop app is ~200 MB total, and most of
+    that is the bundled Node.js and server code, not the Tauri shell. An equivalent Electron
+    build would be 400-500 MB. Memory usage is also lower &mdash; Tauri doesn't spawn a separate
+    browser process. For a personal tool that runs all day, resource efficiency matters.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">But you're still bundling Node.js. Doesn't that negate the size advantage?</div>
+  <div class="a">
+    Partially, yes. The Node.js binary is ~80 MB. But here's the key architectural decision:
+    the Express server is the <em>source of truth</em> for data, auth, and AI chat. I could
+    have rewritten the API layer in Rust, but that would mean maintaining two implementations
+    of the same logic. By spawning Node as a child process, I get 100% code sharing between
+    web and desktop &mdash; same server, same API, same behavior, zero divergence risk. The
+    Tauri shell is just 112 lines of Rust that manages the process lifecycle. If Node bundle
+    size became a real problem, I could explore Bun (smaller binary) or a Rust rewrite of
+    critical paths.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">How does the Tauri app manage the server lifecycle?</div>
+  <div class="a">
+    The Rust code in <code>lib.rs</code> does four things: (1) sets environment variables
+    including <code>FLOWSPACE_PRODUCTION=1</code> and augments PATH to find Node on macOS,
+    (2) spawns <code>node server.mjs</code> as a child process using Tauri's shell plugin,
+    (3) polls TCP port 3000 every 500ms up to 60 times waiting for the server to respond,
+    and (4) navigates the WebView to <code>http://localhost:3000</code> once it's ready.
+    On window close, it kills the server process. The server process handle is stored in
+    a <code>Mutex&lt;Option&lt;CommandChild&gt;&gt;</code> app state for safe concurrent access.
+  </div>
+</div>
+
+<div class="teach">
+    The decision to spawn Node instead of rewriting in Rust is a <strong>build vs. buy decision
+    at the module level</strong>. The cost of code duplication (two implementations of the same API)
+    is almost always higher than the cost of a larger binary. Ship the same code everywhere;
+    optimize later if size becomes a measured problem, not a hypothetical one.
+</div>
+
+<div class="gotcha">
+    "What about cross-platform?" Tauri v2 supports macOS, Windows, and Linux. Currently FlowSpace
+    only builds for macOS because that's the primary target audience, but the Tauri layer is
+    cross-platform by design. The Node.js server code is already platform-agnostic.
+</div>
+
+<div class="buzzwords">
+    native WebView, system webview vs. bundled Chromium, child process management,
+    code sharing across deployment targets, process lifecycle management, sidecar pattern
+</div>
+
+<!-- ==================== 9. APPROVAL WORKFLOW ==================== -->
+<h1 id="s9" class="page-break"><span class="section-num">9</span> Approval Workflow: Why Human-in-the-Loop?</h1>
+
+<div class="qa">
+  <div class="q">Why require user approval for write operations?</div>
+  <div class="a">
+    <strong>Trust calibration.</strong> An AI agent that can send emails on your behalf is powerful
+    but dangerous. One hallucinated email to your CEO could be career-ending. The approval workflow
+    is a <em>trust boundary</em>: read operations (search, list, read) execute automatically because
+    the worst case is showing wrong data that the user can verify visually. Write operations (send
+    email, create event, modify spreadsheet) require approval because they have <em>real-world
+    side effects</em> that may be irreversible. This is the same principle behind Unix's <code>rm -i</code>
+    flag or Git's pre-push hooks &mdash; add friction where mistakes are costly.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">How does the approval UI work technically?</div>
+  <div class="a">
+    When the LLM requests a write tool, the server calls <code>buildApprovalRequest()</code>
+    which creates a structured form with the tool's arguments as editable fields. For example,
+    a <code>send_email</code> approval shows To, Subject, and Body fields that the user can
+    review and modify before confirming. The SSE stream emits a <code>tool_event</code> with
+    status <code>approval_required</code>, and the run transitions to <code>awaiting_approval</code>.
+    The frontend renders an approval card in the chat thread. When the user clicks Approve,
+    a POST to <code>/api/chat/runs/:runId/approve</code> triggers actual execution with the
+    (potentially edited) arguments. The key insight is that the user can <em>edit</em> the
+    AI's proposed action, not just accept/reject it.
+  </div>
+</div>
+
+<div class="teach">
+    Human-in-the-loop is not just a safety feature &mdash; it's a <strong>UX pattern that builds
+    trust incrementally</strong>. Users start by reviewing every action. Over time, as they see
+    the AI making good decisions, they approve faster. Eventually, you could add "auto-approve
+    for this tool" as a preference. But starting with mandatory approval means you never have
+    to apologize for an AI sending a wrong email. Trust is earned, not assumed.
+</div>
+
+<div class="buzzwords">
+    human-in-the-loop, trust boundary, side-effect isolation, read/write separation,
+    approval workflow, editable action preview, progressive trust
+</div>
+
+<!-- ==================== 10. STORAGE ==================== -->
+<h1 id="s10" class="page-break"><span class="section-num">10</span> State &amp; Storage: Why localStorage Over a Database?</h1>
+
+<div class="qa">
+  <div class="q">Why store conversations in localStorage instead of a database?</div>
+  <div class="a">
+    <strong>Privacy and simplicity.</strong> Conversations contain the full text of your emails,
+    calendar events, and whatever you discuss with the AI. Storing this in a cloud database
+    would create a privacy liability &mdash; a data breach would expose all of a user's
+    Google Workspace content. localStorage keeps everything on the user's machine. It's also
+    zero-configuration: no database to set up, no migrations to run, no connection strings.
+    For a personal tool, this is the right trade-off.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">What about the 5-10 MB localStorage limit?</div>
+  <div class="a">
+    It's a real constraint. A heavy user with hundreds of conversations could hit it. I mitigate
+    this with time-based grouping (conversations are grouped as Today / Yesterday / This Week / Older)
+    and the UI naturally encourages archiving. If this became a problem, I'd migrate to IndexedDB
+    (50+ MB limit, same privacy model) or the SQLite backend via better-sqlite3 which is already
+    a dependency. The migration path is straightforward because conversations are JSON-serializable.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">What about server-side state? What's stored on the filesystem?</div>
+  <div class="a">
+    The server stores five types of JSON files in the data directory:
+    <strong>credentials</strong> (OAuth tokens per account),
+    <strong>accounts manifest</strong> (list of connected accounts),
+    <strong>memories</strong> (long-term AI context per user),
+    <strong>dynamic tools</strong> (user-created tool definitions), and
+    <strong>follow-up state</strong> (commitment tracker). Each is a single JSON file that's
+    read on demand and written on change. For a single-user app, this is simpler and more
+    reliable than a database &mdash; no migrations, no schema versions, no corruption risk from
+    improper shutdowns. The data is also trivially portable &mdash; copy the directory to back up
+    or migrate everything.
+  </div>
+</div>
+
+<div class="teach">
+    The storage decision maps directly to the <strong>data's lifecycle and sensitivity</strong>.
+    Ephemeral data (cache) &rarr; memory. Session data (conversations) &rarr; client-side storage.
+    Persistent config (credentials, preferences) &rarr; filesystem. Shared data (none, single-user)
+    &rarr; database. FlowSpace has no shared data, so no database is needed. This is a feature, not a limitation.
+</div>
+
+<div class="buzzwords">
+    local-first architecture, data sovereignty, zero-configuration storage, JSON-based persistence,
+    IndexedDB migration path, portable data directory
+</div>
+
+<!-- ==================== 11. TOOL SYSTEM ==================== -->
+<h1 id="s11" class="page-break"><span class="section-num">11</span> The Tool System: Design &amp; Extensibility</h1>
+
+<div class="qa">
+  <div class="q">How did you design the tool system? How are 23 tools organized?</div>
+  <div class="a">
+    Tools are organized into four tiers by complexity and risk. <strong>Read tools</strong> (14)
+    query Google APIs and return structured data &mdash; they're safe to auto-execute. <strong>Write
+    tools</strong> (9) modify user data and require approval. <strong>Bulk inbox actions</strong>
+    (8) operate on multiple items and show a preview before execution. <strong>Workflow tools</strong>
+    (4) compose multiple reads into higher-level operations like standup reports or meeting prep.
+    Each tool is defined as a JSON schema (name, description, parameters) that the LLM sees,
+    plus an execution function that maps to gws CLI commands or direct Google API calls.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">How do tools execute? Why subprocess instead of direct API calls?</div>
+  <div class="a">
+    Most tools execute via the <strong>gws CLI as a subprocess</strong> using Node's <code>execFile</code>
+    (not <code>exec</code>). This is intentional for three reasons: (1) <strong>Security</strong> &mdash;
+    <code>execFile</code> doesn't spawn a shell, preventing command injection. The token is passed
+    via environment variable, not command-line argument. (2) <strong>Isolation</strong> &mdash; each
+    tool call runs in its own process with its own timeout (30s). A hung API call doesn't block
+    the server. (3) <strong>Abstraction</strong> &mdash; the gws CLI handles the complexity of
+    Google API pagination, field formatting, and error messages. My tools are thin wrappers
+    that parse the CLI output.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Tell me about the dynamic tool composition feature.</div>
+  <div class="a">
+    Users can create custom tools by chaining existing tools into multi-step workflows. A
+    dynamic tool definition is an array of <code>ToolStep</code> objects, each with an action
+    (existing tool name), arguments (with template variables), and an optional output key for
+    passing results between steps. For example, a "log expense" tool could read a spreadsheet
+    to find the next row, then append a new row with the expense data. These are stored in
+    <code>.dynamic-tools.json</code> and registered at runtime. It's essentially a simple
+    workflow engine built on top of the existing tool infrastructure.
+  </div>
+</div>
+
+<div class="teach">
+    The tool system follows the <strong>Unix philosophy</strong>: each tool does one thing well,
+    and complex behavior emerges from composition. The 23 tools are atomic building blocks.
+    The LLM composes them at runtime (multi-round tool calling), and users can pre-compose
+    them into reusable workflows (dynamic tools). This is more maintainable than monolithic
+    "smart" tools that try to handle every case internally.
+</div>
+
+<div class="buzzwords">
+    Unix philosophy, tool composition, subprocess isolation, command injection prevention,
+    execFile vs exec, workflow engine, schema-driven tool definitions
+</div>
+
+<!-- ==================== 12. ERROR HANDLING ==================== -->
+<h1 id="s12" class="page-break"><span class="section-num">12</span> Error Handling &amp; Resilience</h1>
+
+<div class="qa">
+  <div class="q">How do you handle errors in the tool-calling loop?</div>
+  <div class="a">
+    Errors are classified into typed categories: <code>auth_expired</code>, <code>rate_limited</code>,
+    <code>tool_timeout</code>, <code>validation_failed</code>, and <code>unknown</code>. Each has
+    a different recovery strategy. Auth errors stop the run and prompt re-authentication.
+    Rate limit errors are reported to the LLM so it can pace itself. Timeout errors (30s)
+    abort the tool and let the LLM try an alternative approach. Validation errors (bad arguments)
+    are fed back to the LLM for self-correction. Unknown errors are logged with full context
+    but only a sanitized message is sent to the frontend &mdash; no stack traces, no internal paths.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">What if the LLM returns malformed tool calls?</div>
+  <div class="a">
+    The tool execution layer validates the tool name against the registered tool set and
+    the arguments against the expected schema. If the LLM requests a non-existent tool,
+    we return an error result that says "tool not found" with the list of available tools.
+    If arguments are missing or wrong type, the gws CLI rejects them with a descriptive error.
+    In both cases, the error is appended to the conversation so the LLM can self-correct in
+    the next round. The 5-round limit ensures this correction loop terminates.
+  </div>
+</div>
+
+<div class="teach">
+    <strong>Error classification is more important than error handling.</strong> Generic try/catch
+    with a "something went wrong" message is useless. By classifying errors into actionable
+    categories, each layer of the system can make intelligent decisions: the tool layer retries
+    or fails fast, the chat loop decides whether to continue or stop, and the frontend shows
+    the user a relevant message ("your session expired" vs. "we hit Google's rate limit,
+    try again in a minute").
+</div>
+
+<div class="buzzwords">
+    typed error classification, self-correcting agents, graceful degradation,
+    error boundary, fail-fast, sanitized error messages, defense in depth
+</div>
+
+<!-- ==================== 13. SECURITY ==================== -->
+<h1 id="s13" class="page-break"><span class="section-num">13</span> Security Deep-Dive</h1>
+
+<div class="qa">
+  <div class="q">What are the main attack surfaces, and how do you mitigate them?</div>
+  <div class="a">
+    Four attack surfaces. <strong>(1) Token theft:</strong> Credentials are stored in the user's
+    home directory with standard file permissions. Tokens are passed to subprocesses via env vars,
+    never CLI args (which appear in <code>ps</code> output). Refresh tokens are server-side only.
+    <strong>(2) Command injection:</strong> All subprocess execution uses <code>execFile</code>
+    which doesn't spawn a shell. Arguments are passed as an array, not a concatenated string.
+    <strong>(3) Prompt injection:</strong> The LLM processes user messages that could contain
+    adversarial prompts. The approval workflow is the safety net &mdash; even if the LLM is
+    tricked into calling <code>send_email</code> with malicious content, the user sees and
+    approves it first. <strong>(4) Data exfiltration via LLM:</strong> User data is sent to
+    the LLM provider (Z.AI) for processing. This is disclosed and mitigated by making the
+    LLM provider configurable &mdash; users can point to a local model via Ollama for full privacy.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">How do you prevent the AI from taking destructive actions?</div>
+  <div class="a">
+    Three layers. <strong>Layer 1:</strong> Read/write tool separation &mdash; the LLM can freely
+    read, but all writes require approval. <strong>Layer 2:</strong> Approval UI with editable
+    fields &mdash; the user sees exactly what will happen and can modify it. <strong>Layer 3:</strong>
+    Undo capability &mdash; bulk inbox actions have an audit log, and the <code>restore_email_threads</code>
+    tool can reverse archive/trash operations. This defense-in-depth means a single failure
+    (LLM hallucination, user misclick, UI bug) doesn't cause irreversible damage.
+  </div>
+</div>
+
+<div class="teach">
+    In AI-powered applications, the <strong>trust boundary</strong> is between the LLM's output
+    and the system's actions. Never trust LLM output as validated input. Treat every tool call
+    from the LLM the same way you'd treat user input in a web form &mdash; validate, sanitize,
+    and require confirmation for dangerous operations. The approval workflow is essentially
+    a CSRF protection mechanism for AI actions.
+</div>
+
+<div class="buzzwords">
+    defense in depth, trust boundary, principle of least privilege, command injection prevention,
+    prompt injection mitigation, STRIDE threat model, audit trail
+</div>
+
+<!-- ==================== 14. TESTING ==================== -->
+<h1 id="s14" class="page-break"><span class="section-num">14</span> Testing Strategy</h1>
+
+<div class="qa">
+  <div class="q">How do you test an AI-powered application?</div>
+  <div class="a">
+    I test in layers. <strong>Unit tests</strong> (Vitest) cover pure logic: message parsing,
+    suggestion extraction, triage heuristics, credential resolution. These are deterministic
+    and fast. <strong>Integration tests</strong> cover API endpoints with mocked Google API
+    responses &mdash; verifying that the server correctly handles auth, caching, and error cases.
+    <strong>The AI layer is deliberately not unit-tested</strong> for LLM output (which is
+    non-deterministic), but the <em>infrastructure around it</em> is tested: tool registration,
+    approval request building, error classification, SSE event formatting. The tool execution
+    functions are tested with fixture data from real gws CLI output.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Why not test the LLM responses?</div>
+  <div class="a">
+    LLM output is non-deterministic by design &mdash; the same prompt can produce different
+    responses. Testing "did the model say the right thing" is fragile and expensive (requires
+    API calls). Instead, I test the <em>contract</em>: "given a tool call from the LLM, does
+    the system execute it correctly?" and "given a tool result, does the system format it
+    correctly for the frontend?" The LLM is treated as an external service with well-defined
+    inputs (system prompt + tools + messages) and outputs (text or tool calls). Everything
+    around that boundary is testable and tested.
+  </div>
+</div>
+
+<div class="teach">
+    When testing AI applications, draw a line around the non-deterministic part (LLM inference)
+    and test everything else. Test the <strong>plumbing, not the prediction</strong>. Verify
+    tool schemas are valid, approval requests have all required fields, error handling works,
+    streaming events are well-formed. This gives you confidence that when the LLM behaves
+    correctly, the system handles it correctly &mdash; and when the LLM misbehaves, the system
+    handles that correctly too.
+</div>
+
+<div class="buzzwords">
+    contract testing, deterministic vs. non-deterministic testing, test pyramid,
+    fixture-based testing, LLM evaluation (evals), boundary testing
+</div>
+
+<!-- ==================== 15. DEPLOYMENT ==================== -->
+<h1 id="s15" class="page-break"><span class="section-num">15</span> Deployment &amp; Distribution</h1>
+
+<div class="qa">
+  <div class="q">Walk me through your deployment strategy.</div>
+  <div class="a">
+    FlowSpace has three deployment targets. <strong>Local development:</strong>
+    <code>make dev</code> runs Tailwind in watch mode + tsx server with Vite HMR middleware.
+    <strong>Docker:</strong> Two-stage build &mdash; stage 1 installs deps and builds the frontend,
+    stage 2 copies only production files and deps. Final image is ~500 MB on Node 22 Alpine.
+    <strong>macOS desktop:</strong> <code>make tauri-build</code> runs a pre-build script that
+    bundles Node.js and gws CLI as sidecars, then Tauri builds the .app and .dmg with code
+    signing and notarization for distribution.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Why a two-stage Docker build?</div>
+  <div class="a">
+    Stage 1 needs build tools (python3, make, g++) for native Node modules like better-sqlite3
+    and sharp. Stage 2 only needs the Node runtime and production dependencies. By splitting
+    stages, the build tools (~200 MB) don't end up in the production image. This is a standard
+    Docker best practice for Node.js apps with native addons. The final image only contains
+    what's needed to run, not what's needed to build.
+  </div>
+</div>
+
+<div class="teach">
+    <strong>Multi-stage Docker builds</strong> are one of the most impactful DevOps optimizations.
+    They let you use a rich build environment (compilers, dev headers) without paying for it in
+    production image size. Always separate "build" from "run" concerns in your Dockerfile.
+</div>
+
+<div class="buzzwords">
+    multi-stage Docker build, sidecar bundling, code signing and notarization,
+    HMR (Hot Module Replacement), production-grade build pipeline
+</div>
+
+<!-- ==================== 16. TRADE-OFFS ==================== -->
+<h1 id="s16" class="page-break"><span class="section-num">16</span> Trade-offs You Consciously Made</h1>
+
+<p>This is the section that separates senior engineers from junior ones. Every decision has a cost.
+Owning those costs shows maturity.</p>
+
+<table>
+  <tr><th style="width:22%">Decision</th><th style="width:35%">What You Gained</th><th style="width:35%">What You Gave Up</th></tr>
+  <tr>
+    <td>Express monolith</td>
+    <td>Simple deployment, shared auth, single process, fast iteration</td>
+    <td>Independent scaling of API vs. chat, microservice-level isolation</td>
+  </tr>
+  <tr>
+    <td>gws CLI for auth</td>
+    <td>Zero-config onboarding, no GCP project needed</td>
+    <td>Runtime dependency on external binary, less control over OAuth scopes</td>
+  </tr>
+  <tr>
+    <td>In-memory cache</td>
+    <td>Zero latency, no infrastructure, 15 lines of code</td>
+    <td>Lost on restart, no cross-instance sharing, 60s eventual consistency</td>
+  </tr>
+  <tr>
+    <td>SSE over WebSocket</td>
+    <td>Simple, proxy-friendly, built-in reconnect, standard HTTP</td>
+    <td>Unidirectional only, separate POST needed for user actions</td>
+  </tr>
+  <tr>
+    <td>Tauri over Electron</td>
+    <td>Smaller bundle (~200 MB vs ~500 MB), lower memory usage</td>
+    <td>macOS-only WebView quirks, smaller ecosystem</td>
+  </tr>
+  <tr>
+    <td>localStorage for chat</td>
+    <td>Privacy-first, zero-config, instant persistence</td>
+    <td>5-10 MB limit, no cross-device sync, no search across conversations</td>
+  </tr>
+  <tr>
+    <td>Mandatory approval</td>
+    <td>User safety, trust building, catch AI mistakes</td>
+    <td>Friction for power users, can't fully automate workflows</td>
+  </tr>
+  <tr>
+    <td>GLM-4.7 default</td>
+    <td>Cost-effective, good tool-calling support</td>
+    <td>Less capable reasoning than GPT-4/Claude for edge cases</td>
+  </tr>
+  <tr>
+    <td>Subprocess for tools</td>
+    <td>Isolation, timeout control, security (no shell)</td>
+    <td>Process spawn overhead (~50ms), stdout parsing required</td>
+  </tr>
+  <tr>
+    <td>No database</td>
+    <td>Zero ops, portable data dir, no migrations</td>
+    <td>No complex queries, no relations, manual JSON management</td>
+  </tr>
+</table>
+
+<div class="teach">
+    When an interviewer asks "what would you do differently?", they're testing self-awareness.
+    The best answer format is: "I chose X because of constraint Y. The cost was Z. If that
+    constraint changed (e.g., multi-user, larger team, higher scale), I'd migrate to W."
+    Never say "I'd do everything the same" &mdash; that signals inexperience.
+</div>
+
+<!-- ==================== 17. SELF-AWARENESS ==================== -->
+<h1 id="s17" class="page-break"><span class="section-num">17</span> What You Would Do Differently</h1>
+
+<p>Prepare for these "retrospective" questions. They test engineering judgment, not just skill.</p>
+
+<div class="qa">
+  <div class="q">If you started over, what would you change?</div>
+  <div class="a">
+    Three things. <strong>First, I'd use a typed RPC framework like tRPC</strong> instead of
+    hand-written Express routes and a manual API client. FlowSpace has 20+ endpoints, each
+    with its own request/response types defined separately on server and client. tRPC would
+    give me end-to-end type safety with zero code generation. <strong>Second, I'd use
+    Zustand instead of React Context</strong> from the start. The ChatContext grew to 31 KB
+    because it handles too many concerns. Zustand's slice pattern would keep state modular
+    without the re-render overhead. <strong>Third, I'd add structured logging from day one.</strong>
+    Currently the server uses <code>console.log</code>. In production debugging, structured
+    JSON logs with correlation IDs (linking a chat request to its tool calls) would save hours.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">What's the biggest technical debt?</div>
+  <div class="a">
+    The <code>server.ts</code> file at 3,633 lines. It handles auth, caching, all API routes,
+    chat orchestration, and Vite middleware in a single file. It should be split into modules:
+    <code>routes/auth.ts</code>, <code>routes/workspace.ts</code>, <code>routes/chat.ts</code>,
+    <code>middleware/cache.ts</code>, <code>services/google.ts</code>. The file grew organically
+    during rapid prototyping, and I've been shipping features faster than refactoring. This is
+    a conscious trade-off &mdash; for a solo project, shipping beats perfection &mdash; but it
+    would be the first thing I'd refactor before onboarding another developer.
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">How would you scale this to 10,000 users?</div>
+  <div class="a">
+    FlowSpace is designed as a <em>local-first</em> tool &mdash; each user runs their own instance.
+    But if I were building a SaaS version: (1) Extract auth into a session service backed by
+    a database (PostgreSQL + Redis sessions). (2) Move the cache to Redis for cross-instance sharing.
+    (3) Put the chat endpoint behind a queue (like BullMQ) so LLM calls don't block server workers.
+    (4) Store conversations in a database instead of localStorage, with end-to-end encryption.
+    (5) Add a connection pooler for Google API calls to respect per-user rate limits without
+    affecting other users. The monolith can stay as one deployable &mdash; the bottleneck is
+    the LLM API and Google API rate limits, not the server architecture.
+  </div>
+</div>
+
+<div class="teach">
+    Interviewers love the "scale to X users" question because it tests whether you understand
+    <strong>where the bottlenecks actually are</strong>, not whether you can list "add Redis,
+    add Kubernetes." Always identify the actual bottleneck first (LLM API latency, Google rate limits),
+    then describe targeted solutions for those bottlenecks. Generic "just add more servers"
+    answers signal you don't understand the problem.
+</div>
+
+<!-- ==================== 18. WHITEBOARD ==================== -->
+<h1 id="s18" class="page-break"><span class="section-num">18</span> System Design Whiteboard Walkthrough</h1>
+
+<p>If asked to whiteboard FlowSpace, draw this in order. Practice drawing it in under 5 minutes.</p>
+
+<h2>Step 1: High-Level Boxes (30 seconds)</h2>
+<pre><code>  [Browser/Tauri]  ──HTTP──▶  [Express Server]  ──API──▶  [Google APIs]
+                                     │
+                                     │──SSE──▶  [LLM (Z.AI)]
+                                     │
+                                 [Filesystem]</code></pre>
+
+<p>Say: "Single Express server serves both the API and frontend. Talks to Google for data,
+LLM for AI, filesystem for persistence."</p>
+
+<h2>Step 2: Auth Flow (1 minute)</h2>
+<pre><code>  User → "Sign In" → gws CLI → Google OAuth → Token saved to filesystem
+       → Server loads token → Creates Google API clients → Ready</code></pre>
+
+<p>Say: "Auth is delegated to the gws CLI for zero-config onboarding. Tokens stored in the
+user's home directory. Credential hierarchy with fallback chain for backward compatibility."</p>
+
+<h2>Step 3: Chat Flow (2 minutes)</h2>
+<pre><code>  User message → POST /api/chat
+    → Build system prompt (timezone, persona, memories)
+    → Send to LLM
+    → LLM returns tool_calls[]
+      → Read tool? Execute immediately, feed result back
+      → Write tool? Build approval request, pause, wait for user
+    → Loop up to 5 rounds
+    → Stream response via SSE (chunks + tool events + final payload)
+    → Extract memories for next time</code></pre>
+
+<p>Say: "Tool-calling loop with human-in-the-loop for writes. Max 5 rounds to prevent
+runaway execution. Streaming via SSE for real-time UX."</p>
+
+<h2>Step 4: Data &amp; Cache (1 minute)</h2>
+<pre><code>  API Request → Check in-memory cache (60s TTL)
+    → HIT: Return cached
+    → MISS: Call Google API → Cache result → Return
+
+  Conversations: localStorage (client-side, private)
+  Credentials: Filesystem (server-side, per-account)
+  Memories: Filesystem (server-side, per-user hash)</code></pre>
+
+<p>Say: "Read-through cache for Google APIs. All persistent state is local &mdash; no cloud
+database needed for a personal tool."</p>
+
+<h2>Step 5: Deployment (30 seconds)</h2>
+<pre><code>  Web: Express on port 3000
+  Desktop: Tauri spawns Node as child process, WebView → localhost:3000
+  Docker: Multi-stage build, Node 22 Alpine</code></pre>
+
+<p>Say: "Same codebase, three deployment targets. Tauri uses the same Express server as
+web &mdash; zero code divergence."</p>
+
+<div class="teach">
+    When whiteboarding, <strong>narrate your trade-offs as you draw</strong>. Don't just draw
+    boxes &mdash; say "I chose this because..." at each decision point. This shows the interviewer
+    that every box is intentional, not accidental. The goal isn't a perfect diagram; it's
+    demonstrating that you can reason about systems end-to-end.
+</div>
+
+<!-- ==================== RAPID FIRE ==================== -->
+<h1 class="page-break"><span class="section-num">*</span> Rapid-Fire Review Cards</h1>
+
+<p>Quick-reference answers for common follow-ups. Read these the morning of your interview.</p>
+
+<table>
+  <tr><th style="width:40%">Question</th><th>One-Sentence Answer</th></tr>
+  <tr><td>Why TypeScript everywhere?</td><td>End-to-end type safety between server and client, shared type definitions, fewer runtime errors.</td></tr>
+  <tr><td>Why Vite over Webpack?</td><td>10x faster HMR via native ES modules, simpler config, built-in TypeScript support.</td></tr>
+  <tr><td>Why Tailwind CSS v4?</td><td>Utility-first = faster iteration, no CSS naming debates, v4 uses CSS custom properties natively.</td></tr>
+  <tr><td>Why Framer Motion?</td><td>Declarative animation API that integrates cleanly with React's component model.</td></tr>
+  <tr><td>Why no React Router?</td><td>Single-page app with tab-based navigation &mdash; view switching via state is simpler than URL routing.</td></tr>
+  <tr><td>Why OpenAI SDK for non-OpenAI model?</td><td>OpenAI's API format is the de facto standard. Most providers offer compatible endpoints.</td></tr>
+  <tr><td>Why <code>execFile</code> not <code>exec</code>?</td><td><code>execFile</code> skips the shell, preventing command injection. Arguments are an array, not a string.</td></tr>
+  <tr><td>Why 23 tools, not fewer?</td><td>Atomic tools compose better. The LLM chains them at runtime for complex workflows.</td></tr>
+  <tr><td>Why no WebSocket?</td><td>Chat streaming is unidirectional (server → client). SSE is simpler, proxy-friendly, and has auto-reconnect.</td></tr>
+  <tr><td>Why no database?</td><td>Single-user, local-first app. JSON files in home directory = zero ops, full portability, privacy.</td></tr>
+  <tr><td>Why Rust for desktop?</td><td>Tauri uses the system WebView (no bundled Chromium). Rust shell is 112 lines. 60% smaller than Electron.</td></tr>
+  <tr><td>How do you prevent AI mistakes?</td><td>Human-in-the-loop approval for all write operations. User sees and can edit before executing.</td></tr>
+  <tr><td>What's the biggest tech debt?</td><td>server.ts at 3,633 lines. Should be split into route modules and service layers.</td></tr>
+  <tr><td>How would you add auth for SaaS?</td><td>PostgreSQL for accounts, Redis for sessions, JWT or session cookies, per-user token encryption.</td></tr>
+  <tr><td>What would break at scale?</td><td>In-memory cache (needs Redis), filesystem storage (needs DB), LLM latency (needs queue).</td></tr>
+</table>
+
+<!-- ==================== FOOTER ==================== -->
+<div class="footer">
+  <p>
+    <strong>FlowSpace Interview Prep Guide</strong> &mdash; v1.0 &mdash; March 2026<br>
+    Study this, practice the whiteboard walkthrough, and own your trade-offs.<br>
+    You built this. You know why every line exists. That's your superpower.
+  </p>
+</div>
+
+</body>
+</html>

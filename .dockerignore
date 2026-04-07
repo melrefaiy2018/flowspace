@@ -1,7 +1,21 @@
 node_modules
 dist
+dist-server
 .git
 .DS_Store
 .env
+.env.*
 *.log
+*.tar.gz
+
+# Tauri desktop app (large Rust build artifacts)
+src-tauri/target
+
+# Dev/tooling only
 specs
+docs
+.claude
+.gemini
+.specify
+.vscode
+coverage

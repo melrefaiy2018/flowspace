@@ -1,7 +1,10 @@
-.PHONY: help install dev build prod clean typecheck kill docker docker-run docker-stop tauri-dev tauri-sidecar tauri-build tauri-build-local tauri-verify-macos tauri-icons
+.PHONY: help install dev build prod clean typecheck kill docker docker-run docker-stop docker-push tauri-dev tauri-sidecar tauri-build tauri-build-local tauri-verify-macos tauri-icons
 
-PORT  ?= 3000
-IMAGE ?= flowspace
+PORT             ?= 3000
+IMAGE            ?= flowspace
+REGISTRY         ?= ghcr.io/melrefaiy2018/flowspace
+FLOWSPACE_DATA   ?= $(HOME)/.flowspace
+VERSION          := $(shell node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -24,19 +27,35 @@ prod: build ## Start production server (serves built frontend)
 typecheck: node_modules ## Run TypeScript type check
 	npx tsc --noEmit
 
-docker: ## Build Docker image
-	docker build -t $(IMAGE) .
+docker: ## Build Docker image (set OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET)
+	@if [ -z "$(OAUTH_CLIENT_ID)" ] || [ -z "$(OAUTH_CLIENT_SECRET)" ]; then \
+		echo "Error: OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET are required."; \
+		echo "  OAUTH_CLIENT_ID=xxx OAUTH_CLIENT_SECRET=yyy make docker"; \
+		exit 1; \
+	fi
+	docker build \
+		--build-arg OAUTH_CLIENT_ID="$(OAUTH_CLIENT_ID)" \
+		--build-arg OAUTH_CLIENT_SECRET="$(OAUTH_CLIENT_SECRET)" \
+		--build-arg FLOWSPACE_VERSION="$(VERSION)" \
+		-t $(IMAGE) \
+		-t $(REGISTRY):$(VERSION) \
+		-t $(REGISTRY):latest \
+		.
 
-docker-run: ## Run container (pass .env and ADC credentials)
+docker-run: ## Run container with local data volume
 	docker run --rm -it \
 		-p $(PORT):3000 \
-		--env-file .env \
-		-v $(HOME)/.config/gcloud:/root/.config/gcloud:ro \
+		-v "$(FLOWSPACE_DATA):/data" \
+		-e PORT=$(PORT) \
 		--name flowspace \
 		$(IMAGE)
 
 docker-stop: ## Stop running container
 	docker stop flowspace 2>/dev/null || true
+
+docker-push: ## Push image to GitHub Container Registry
+	docker push $(REGISTRY):$(VERSION)
+	docker push $(REGISTRY):latest
 
 kill: ## Kill any process on port 3000
 	@lsof -ti :$(PORT) | xargs kill -9 2>/dev/null || true

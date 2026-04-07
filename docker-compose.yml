@@ -1,0 +1,35 @@
+# FlowSpace — Docker Compose
+#
+# Usage:
+#   docker compose up -d
+#
+# The image is pulled from GitHub Container Registry.
+# To build locally instead, uncomment the `build:` block and comment out `image:`.
+
+services:
+  flowspace:
+    image: ghcr.io/melrefaiy2018/flowspace:latest
+    # build:
+    #   context: .
+    #   args:
+    #     OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
+    #     OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - flowspace-data:/data
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      FLOWSPACE_PRODUCTION: "1"
+      FLOWSPACE_DATA_DIR: /data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  flowspace-data:
