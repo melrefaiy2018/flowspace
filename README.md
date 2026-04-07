@@ -42,9 +42,11 @@ Then it opens `http://localhost:3000` in your browser.
 
 After setup, `npx flowspace` starts immediately — no wizard.
 
-## Google OAuth setup
+## Google sign-in setup
 
-FlowSpace uses your own Google Cloud project for OAuth. This means your data goes directly between your machine and Google — no intermediary server.
+FlowSpace uses your own Google Cloud project so your data goes directly between your machine and Google — no intermediary server.
+
+You'll need a `client_secret.json` file from GCP. This is a one-time step.
 
 **Steps (~5 minutes):**
 
@@ -62,7 +64,7 @@ FlowSpace uses your own Google Cloud project for OAuth. This means your data goe
    - Download the JSON file (it will be named `client_secret_*.json`)
 5. Run `npx flowspace` and enter the path to that file when prompted
 
-Your credentials are stored in `~/Library/Application Support/FlowSpace/` and never leave your machine.
+When you click **Sign in with Google** in the app, it opens your browser for Google's standard consent screen and stores the tokens locally at `~/Library/Application Support/FlowSpace/`. Nothing goes to any external server.
 
 ## AI providers
 
