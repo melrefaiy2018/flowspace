@@ -1,7 +1,7 @@
 {
   "name": "flowspace",
   "private": false,
-  "version": "1.2.14",
+  "version": "1.2.15",
   "type": "module",
   "bin": {
     "flowspace": "bin/cli.mjs"

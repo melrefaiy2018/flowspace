@@ -1502,12 +1502,6 @@
       border-color: color-mix(in oklab, var(--color-white) 12%, transparent);
     }
   }
-  .border-white\/15 {
-    border-color: color-mix(in srgb, #fff 15%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-white) 15%, transparent);
-    }
-  }
   .border-l-\[var\(--accent\)\] {
     border-left-color: var(--accent);
   }

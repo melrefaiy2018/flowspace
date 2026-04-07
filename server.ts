@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { execFileSync, execFile, spawn as spawnProc } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 import https from 'https';
 import { randomUUID } from 'crypto';
 import dotenv from 'dotenv';
@@ -1093,9 +1093,6 @@ function isCodexAuthenticated(codexBin: string): boolean {
   }
 }
 
-// Holds the active device-auth process so we can clean it up
-let codexLoginProc: ReturnType<typeof spawnProc> | null = null;
-
 app.get('/api/codex/status', (_req, res) => {
   const bin = findCodexBin();
   if (!bin) {
@@ -1103,75 +1100,6 @@ app.get('/api/codex/status', (_req, res) => {
   }
   const authenticated = isCodexAuthenticated(bin);
   res.json({ installed: true, authenticated });
-});
-
-app.post('/api/codex/login', (_req, res) => {
-  const bin = findCodexBin();
-  if (!bin) {
-    return res.status(400).json({ error: 'codex CLI not installed. Run: npm install -g @openai/codex' });
-  }
-
-  // Kill any existing login process
-  if (codexLoginProc) {
-    try { codexLoginProc.kill(); } catch { /* ignore */ }
-    codexLoginProc = null;
-  }
-
-  const proc = spawnProc(bin, ['login', '--device-auth'], { env: shellEnv });
-  codexLoginProc = proc;
-
-  let output = '';
-  let responded = false;
-
-  // Strip ANSI escape sequences (e.g. [94m, [0m, [90m) before regex parsing
-  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
-
-  const tryParse = () => {
-    const clean = stripAnsi(output);
-    // URL: match https://... up to first whitespace
-    const urlMatch = clean.match(/https:\/\/[^\s]+/);
-    // Code: 4 uppercase alphanum, dash, 4-6 uppercase alphanum (e.g. 4VVB-4BHPR)
-    const codeMatch = clean.match(/([A-Z0-9]{4}-[A-Z0-9]{4,6})/);
-    if (urlMatch && codeMatch && !responded) {
-      responded = true;
-      clearTimeout(timeout);
-      res.json({ url: urlMatch[0], code: codeMatch[1] });
-    }
-  };
-
-  const timeout = setTimeout(() => {
-    if (!responded) {
-      responded = true;
-      res.status(500).json({ error: 'Timed out waiting for device auth URL' });
-    }
-  }, 10_000);
-
-  proc.stdout?.on('data', (chunk: Buffer) => {
-    output += chunk.toString();
-    tryParse();
-  });
-
-  proc.stderr?.on('data', (chunk: Buffer) => {
-    output += chunk.toString();
-    tryParse();
-  });
-
-  proc.on('error', (err) => {
-    clearTimeout(timeout);
-    if (!responded) {
-      responded = true;
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  proc.on('exit', () => {
-    codexLoginProc = null;
-    clearTimeout(timeout);
-    if (!responded) {
-      responded = true;
-      res.status(500).json({ error: 'codex login exited without providing auth URL' });
-    }
-  });
 });
 
 app.get('/api/codex/login/poll', (_req, res) => {
