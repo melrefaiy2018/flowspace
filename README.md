@@ -6,7 +6,9 @@
 
 Drive, Gmail, Calendar, and Tasks in a single dashboard. Ask the AI to draft replies, schedule meetings, find files, or summarize your week — and it will.
 
-`npx flowspace`
+```bash
+curl -fsSL https://raw.githubusercontent.com/melrefaiy2018/flowspace/main/install.sh | bash
+```
 
 </div>
 
@@ -66,9 +68,9 @@ You'll need a `client_secret.json` file from GCP. This is a one-time step.
    - APIs & Services → Credentials → Create Credentials → **OAuth client ID**
    - Application type: **Desktop app**
    - Download the JSON file (it will be named `client_secret_*.json`)
-5. Run `npx flowspace` and enter the path to that file when prompted
+5. Run `flowspace` and enter the path to that file when prompted
 
-When you click **Sign in with Google** in the app, it opens your browser for Google's standard consent screen and stores the tokens locally at `~/Library/Application Support/FlowSpace/`. Nothing goes to any external server.
+When you click **Sign in with Google** in the app, it opens your browser for Google's standard consent screen and stores the tokens locally at `~/.flowspace/`. Nothing goes to any external server.
 
 ## AI providers
 
@@ -105,21 +107,13 @@ npm test          # Run tests
 npm run typecheck # Type check
 ```
 
-For production:
-
-```bash
-npm run build         # Build frontend to dist/
-npm run build:server  # Bundle server to dist-server/server.mjs
-npx flowspace         # Runs the bundled server
-```
-
 ## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 19, Tailwind CSS v4, Framer Motion, Lucide React |
 | Server | Express.js, TypeScript |
-| Google APIs | googleapis, google-auth-library, gws CLI |
+| Google APIs | googleapis, google-auth-library |
 | AI | OpenAI-compatible client (any provider) |
 | Build | Vite 6, esbuild |
 | Testing | Vitest (69 unit tests) |
