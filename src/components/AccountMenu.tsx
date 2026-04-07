@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import type { ConnectedAccount } from '../services/api';
 
@@ -13,6 +13,15 @@ interface Props {
 
 export default function AccountMenu({ accounts, activeAccountId, busy = false, onSwitch, onAdd, onRemove }: Props) {
   const [open, setOpen] = useState(false);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open]);
+
   const activeAccount = useMemo(
     () => accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? null,
     [accounts, activeAccountId],

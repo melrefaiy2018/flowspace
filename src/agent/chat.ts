@@ -42,7 +42,7 @@ function initMemoryForUser(userEmail: string | undefined): boolean {
       console.log('[memory] Created memory directory:', memoryDir);
     }
     const memoryPath = path.join(memoryDir, `${userHash}.json`);
-    console.log('[memory] Initializing for user:', userEmail, '-> hash:', userHash, '-> path:', memoryPath);
+    console.log('[memory] Initializing for user hash:', userHash);
 
     setMemoryFileIO({
       exists: (p: string) => fs.existsSync(p),
@@ -646,7 +646,7 @@ export async function handleChat(
                 resourceIds: mem.resourceIds,
                 source: mem.source,
               });
-              console.log('[memory] Saved memory:', entry.id, '-', entry.content);
+              console.log('[memory] Saved memory:', entry.id);
             }
           } catch (err) {
             console.error('[memory] Memory extraction failed:', err);
@@ -763,7 +763,7 @@ export async function executeApprovedAction(
           resourceIds: mem.resourceIds,
           source: mem.source,
         });
-        console.log('[memory] Saved memory from approval:', entry.id, '-', entry.content);
+        console.log('[memory] Saved memory from approval:', entry.id);
       }
     } catch (err) {
       console.error('[memory] Memory extraction failed in executeApprovedAction:', err);

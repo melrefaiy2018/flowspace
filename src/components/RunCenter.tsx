@@ -92,6 +92,14 @@ export default function RunCenter() {
   const { runs, runSummary, pendingApprovals, switchConversation, triggerAction, approveAction, dismissApproval } = useChatContext();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'runs' | 'approvals'>('runs');
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsOpen(false); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isOpen]);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed'>('active');
 
   const filteredRuns = useMemo(() => {
@@ -277,7 +285,7 @@ export default function RunCenter() {
                             {run.conversationId && (
                               <button
                                 onClick={() => switchConversation(run.conversationId!)}
-                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-[var(--surface2)] text-[var(--text-faint)] hover:text-[var(--text)] transition-all cursor-pointer"
+                                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1.5 rounded-full hover:bg-[var(--surface2)] text-[var(--text-faint)] hover:text-[var(--text)] transition-all cursor-pointer"
                                 title="Jump to thread"
                               >
                                 <ChevronRight size={16} />

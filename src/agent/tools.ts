@@ -46,7 +46,8 @@ async function getAccessToken(): Promise<string> {
       const credsPath = typeof activeAccount?.credentialPath === 'string'
         ? activeAccount.credentialPath
         : null;
-      if (credsPath && fs.existsSync(credsPath)) {
+      // Validate credentialPath stays within dataDir to prevent path traversal
+      if (credsPath && path.resolve(credsPath).startsWith(path.resolve(dataDir) + path.sep) && fs.existsSync(credsPath)) {
         const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
         const token = await refreshAccessToken(creds.client_id, creds.client_secret, creds.refresh_token);
         if (token) return token;
@@ -1993,7 +1994,12 @@ export async function executeTool(name: string, args: Record<string, any>, signa
 
     case 'sheets_update': {
       const values = typeof args.values === 'string' ? args.values : JSON.stringify(args.values);
-      const rows = JSON.parse(values);
+      let rows: unknown;
+      try {
+        rows = JSON.parse(values);
+      } catch {
+        return `Error: invalid JSON in 'values' field for sheets_update`;
+      }
       return executeGws(['sheets', 'spreadsheets', 'values', 'update',
         '--params', JSON.stringify({
           spreadsheetId: args.spreadsheet_id,

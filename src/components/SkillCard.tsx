@@ -457,14 +457,14 @@ export default function SkillCard({
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={(e) => { e.stopPropagation(); onStartEdit?.(); }}
-            className="h-7 w-7 rounded-md text-[var(--text-faint)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
+            className="h-7 w-7 rounded-md text-[var(--text-faint)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all flex items-center justify-center"
             title="Edit"
           >
             <PencilLine size={13} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            className="h-7 w-7 rounded-md text-[var(--text-faint)] hover:text-[var(--error)] hover:bg-[var(--error)]/10 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
+            className="h-7 w-7 rounded-md text-[var(--text-faint)] hover:text-[var(--error)] hover:bg-[var(--error)]/10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all flex items-center justify-center"
             title="Delete"
           >
             <Trash2 size={13} />

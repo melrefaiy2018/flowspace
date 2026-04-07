@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Archive, Bot, Briefcase, Calendar, Check, CheckCircle2, ChevronRight, CircleDashed, ExternalLink, FileText, Mail, PencilLine, RefreshCw, RotateCcw, Sparkles, User, VolumeX, X } from 'lucide-react';
 import { useChatContext, type Message } from '../context/ChatContext';
 import type { AgendaEvent, ApprovalRequest, AssistantBlock, BulkActionPreviewItem, EmailDraftData, InboxActionType, ResultListItem, ToolEvent, TriageItem } from '../shared/chat';
 import EmailDraftCard from './EmailDraftCard';
 import { AGENT_NAME } from '../lib/branding';
+
+/** Sanitize HTML produced by renderMarkdown before inserting into the DOM. */
+export function safeMarkdown(text: string): string {
+  return DOMPurify.sanitize(renderMarkdown(text));
+}
 
 const WORKFLOW_CARDS = [
   { icon: Briefcase, label: 'Delegate Standup', desc: "Build today's standup report", prompt: 'Give me a standup report' },
@@ -12,7 +18,8 @@ const WORKFLOW_CARDS = [
   { icon: FileText, label: 'Delegate Weekly Digest', desc: 'Compile this week at a glance', prompt: 'Give me a weekly digest' },
 ];
 
-export function renderMarkdown(text: string): string {
+/** @internal — use safeMarkdown() instead to prevent XSS */
+function renderMarkdown(text: string): string {
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -506,13 +513,11 @@ function SheetCard({ title, data }: { title: string; data: { headers: string[]; 
 function BlockRenderer({ block }: { block: AssistantBlock }) {
   const { undoInboxActionFromAudit } = useChatContext();
 
-  console.log('[BlockRenderer] Rendering block type:', block.type, block);
-
   if (block.type === 'status') {
     return (
       <div className="mt-3 rounded-[12px] border border-[var(--border)] bg-[var(--bg)] px-3 py-3">
         <div className="text-[12px] font-medium text-[var(--text)]">{block.title}</div>
-        <div className="mt-1 text-[12px] text-[var(--text-dim)] leading-relaxed md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(block.body) }} />
+        <div className="mt-1 text-[12px] text-[var(--text-dim)] leading-relaxed md-content" dangerouslySetInnerHTML={{ __html: safeMarkdown(block.body) }} />
       </div>
     );
   }
@@ -529,7 +534,7 @@ function BlockRenderer({ block }: { block: AssistantBlock }) {
               <div className="w-20 shrink-0 text-[10px] font-mono uppercase tracking-[0.06em] text-[var(--text-faint)]">
                 {item.label}
               </div>
-              <div className="text-[12px] text-[var(--text)] break-words md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.value) }} />
+              <div className="text-[12px] text-[var(--text)] break-words md-content" dangerouslySetInnerHTML={{ __html: safeMarkdown(item.value) }} />
             </div>
           ))}
         </div>
@@ -759,6 +764,7 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
                 <>
                   <button
                     onClick={() => setToolsExpanded(!toolsExpanded)}
+                    aria-expanded={toolsExpanded}
                     className="flex items-center gap-1.5 font-mono text-[12px] text-[var(--text-faint)] hover:text-[var(--text-dim)] transition-colors cursor-pointer"
                   >
                     <ChevronRight size={11} className={`transition-transform duration-200 ${toolsExpanded ? 'rotate-90' : ''}`} />
@@ -810,7 +816,7 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
                   </div>
                 </div>
               ) : msg.content ? (
-                <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                <div dangerouslySetInnerHTML={{ __html: safeMarkdown(msg.content) }} />
               ) : isStreaming && !hasToolEvents ? (
                 <div className="flex gap-1.5 items-center h-6">
                   {[0, 1, 2].map((i) => (
@@ -969,11 +975,11 @@ export default function ChatThread({ title = AGENT_NAME, showCloseButton = true,
             </div>
           </div>
         ) : (
-          <>
+          <div role="log" aria-live="polite" aria-relevant="additions">
             {messages.map((msg, index) => (
               <MessageBubble key={msg.id} msg={msg} isLast={index === messages.length - 1} />
             ))}
-          </>
+          </div>
         )}
       </div>
 

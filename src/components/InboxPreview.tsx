@@ -69,7 +69,7 @@ export default function InboxPreview({ messages, onAction }: Props) {
                   </span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                     <button
                       onClick={() => onAction(`Give me a brief, human-readable summary of this email.\n\nFrom: ${senderName(msg.from)}\nSubject: ${msg.subject}\nPreview: ${msg.snippet || '(no preview available)'}\n\nSummarize the key points in 2-3 sentences. Do not output JSON or raw data.`, true)}
                       className="w-6 h-6 rounded-[var(--radius-sm)] bg-[var(--purple-dim)] flex items-center justify-center text-[var(--purple)] hover:bg-[var(--purple)] hover:text-black transition-colors cursor-pointer"

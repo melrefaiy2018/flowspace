@@ -31,6 +31,7 @@ const CODEX_WS_PORT = 4501;
 const CODEX_WS_URL = `ws://127.0.0.1:${CODEX_WS_PORT}`;
 const SERVER_READY_TIMEOUT_MS = 15_000;
 const DETECT_TIMEOUT_MS = 5_000;
+const COMPLETION_TIMEOUT_MS = 60_000;
 
 const CODEX_PATHS = [
   'codex',
@@ -77,19 +78,26 @@ export async function detectCodexCLI(): Promise<DetectResult> {
 
 let cachedServerUrl: string | null = null;
 let cachedServerProcess: ReturnType<typeof spawn> | null = null;
+let pendingServerPromise: Promise<string> | null = null;
 
 export function resetCodexServerCache(): void {
   cachedServerUrl = null;
+  pendingServerPromise = null;
   if (cachedServerProcess) {
     try { cachedServerProcess.kill(); } catch { /* ignore */ }
     cachedServerProcess = null;
   }
 }
 
+// Register cleanup once at module level — not per call
+process.once('exit', () => resetCodexServerCache());
+
 export function ensureCodexServer(port = CODEX_WS_PORT): Promise<string> {
   if (cachedServerUrl) return Promise.resolve(cachedServerUrl);
+  // Prevent concurrent callers from spawning duplicate processes
+  if (pendingServerPromise) return pendingServerPromise;
 
-  return new Promise((resolve, reject) => {
+  pendingServerPromise = new Promise<string>((resolve, reject) => {
     const detection = cachedDetection;
     const codexBin = detection?.path ?? 'codex';
 
@@ -124,10 +132,11 @@ export function ensureCodexServer(port = CODEX_WS_PORT): Promise<string> {
         cachedServerProcess = null;
       }
     });
-
-    // Clean up server on process exit
-    process.on('exit', () => resetCodexServerCache());
+  }).finally(() => {
+    pendingServerPromise = null;
   });
+
+  return pendingServerPromise;
 }
 
 // ── Message conversion ─────────────────────────────────────────────
@@ -205,10 +214,22 @@ export function createCodexClient(config: LLMProviderConfig): LLMClient {
       return new Promise((resolve, reject) => {
         const WS = (globalThis as any).WebSocket as typeof WebSocket;
         const ws = new WS(wsUrl) as any;
+        let settled = false;
 
         const cleanup = () => {
+          settled = true;
+          clearTimeout(timeoutTimer);
           try { ws.close(); } catch { /* ignore */ }
         };
+
+        // Timeout guard — reject if Codex never responds
+        const timeoutTimer = setTimeout(() => {
+          if (!settled) {
+            cleanup();
+            signal?.removeEventListener('abort', onAbort);
+            reject(new Error(`Codex completion timed out after ${COMPLETION_TIMEOUT_MS}ms`));
+          }
+        }, COMPLETION_TIMEOUT_MS);
 
         const onAbort = () => {
           cleanup();
@@ -252,6 +273,7 @@ export function createCodexClient(config: LLMProviderConfig): LLMClient {
 
         function onError(err: any) {
           signal?.removeEventListener('abort', onAbort);
+          cleanup();
           reject(err instanceof Error ? err : new Error(String(err.message ?? err)));
         }
       });

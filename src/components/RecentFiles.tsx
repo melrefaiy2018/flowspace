@@ -54,7 +54,7 @@ export default function RecentFiles({ files, onAction }: Props) {
                   e.stopPropagation();
                   onAction(`Summarize my file: ${f.name}`, true);
                 }}
-                className="absolute top-2 right-2 w-6 h-6 rounded-[var(--radius-sm)] bg-[var(--blue-dim)] flex items-center justify-center text-[var(--blue)] opacity-0 group-hover:opacity-100 hover:bg-[var(--blue)] hover:text-black transition-all cursor-pointer"
+                className="absolute top-2 right-2 w-6 h-6 rounded-[var(--radius-sm)] bg-[var(--blue-dim)] flex items-center justify-center text-[var(--blue)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-[var(--blue)] hover:text-black transition-all cursor-pointer"
                 title="Summarize"
               >
                 <Sparkles size={11} />

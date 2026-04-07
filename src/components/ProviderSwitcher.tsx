@@ -32,7 +32,7 @@ export default function ProviderSwitcher({ onProviderChange }: ProviderSwitcherP
     void load();
   }, [load]);
 
-  // Close on outside click
+  // Close on outside click or Escape
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -40,8 +40,13 @@ export default function ProviderSwitcher({ onProviderChange }: ProviderSwitcherP
         setOpen(false);
       }
     };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', handleKey);
+    };
   }, [open]);
 
   const configuredProviders = providers.filter((p) => Boolean(settings?.providers[p.id]));

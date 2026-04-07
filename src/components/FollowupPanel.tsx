@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Clock, Check, X, ExternalLink, CalendarClock, ChevronDown, ChevronRight, Sparkles, Bookmark } from 'lucide-react';
 import type { FollowupItem, SavedEmail } from '../services/api';
 import { gmailThreadUrl } from '../lib/google-account-links';
@@ -25,6 +25,14 @@ function dueLabel(due: string): string {
 
 function SnoozeMenu({ onSnooze }: { onSnooze: (due: string) => void }) {
   const [open, setOpen] = useState(false);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open]);
 
   const options = [
     { label: 'Tomorrow', days: 1 },

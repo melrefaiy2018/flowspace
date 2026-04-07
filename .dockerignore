@@ -11,6 +11,14 @@ dist-server
 # Tauri desktop app (large Rust build artifacts)
 src-tauri/target
 
+# Sensitive files — never copy into build context
+client_secret.json
+*.secret.json
+.gws-credentials*.json
+.tokens.json
+.accounts.json
+.llm-settings.json
+
 # Dev/tooling only
 specs
 docs

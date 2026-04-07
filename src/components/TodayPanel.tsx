@@ -54,7 +54,7 @@ function EventRow({ ev, onAction, highlight }: { ev: CalendarEvent; onAction: Pr
           {highlight === 'soon' && <span className="text-[var(--amber)] font-medium ml-1">Soon</span>}
         </div>
       </div>
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
         {ev.hangoutLink && (
           <a
             href={ev.hangoutLink}

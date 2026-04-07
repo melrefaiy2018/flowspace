@@ -121,7 +121,7 @@ function MemoryItem({
           </div>
         )}
 
-        <div className="shrink-0 opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+        <div className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 flex items-center gap-1 transition-opacity">
           <button
             onClick={() => setIsEditing(true)}
             className="w-6 h-6 rounded flex items-center justify-center text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--surface)]"

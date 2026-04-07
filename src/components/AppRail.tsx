@@ -272,7 +272,7 @@ export default function AppRail({
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); onDeleteConversation(conversation.id); }}
-                          className="absolute right-[8px] top-1/2 -translate-y-1/2 shrink-0 h-[24px] w-[24px] rounded-md text-[var(--text-faint)] hover:text-[var(--error)] hover:bg-[var(--error-dim)] opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center cursor-pointer"
+                          className="absolute right-[8px] top-1/2 -translate-y-1/2 shrink-0 h-[24px] w-[24px] rounded-md text-[var(--text-faint)] hover:text-[var(--error)] hover:bg-[var(--error-dim)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all flex items-center justify-center cursor-pointer"
                           aria-label={`Delete conversation: ${conversation.title}`}
                         >
                           <Trash2 size={13} />

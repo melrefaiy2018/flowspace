@@ -68,7 +68,7 @@ function EmailCard({
       <button
         title="Remove"
         onClick={(e) => { e.stopPropagation(); onUnsave(); }}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--text-faint)] hover:text-[var(--error)] hover:bg-[var(--error-dim)] transition-all cursor-pointer shrink-0"
+        className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-1 rounded text-[var(--text-faint)] hover:text-[var(--error)] hover:bg-[var(--error-dim)] transition-all cursor-pointer shrink-0"
       >
         <X size={12} />
       </button>

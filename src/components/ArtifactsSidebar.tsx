@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, FileText, Mail, Calendar, CheckSquare, Table } from 'lucide-react';
 import type { AssistantBlock, ResultListItem, AgendaEvent, TriageItem } from '../shared/chat';
 import type { Message } from '../context/ChatContext';
-import { renderMarkdown } from './ChatThread';
+import { safeMarkdown } from './ChatThread';
 
 const ARTIFACTS_COLLAPSED_KEY = 'flowspace.artifacts.collapsed';
 
@@ -63,7 +63,7 @@ function ResultItem({ item }: { item: ResultListItem }) {
       {item.url && (
         <button
           onClick={() => window.open(item.url, '_blank')}
-          className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[var(--text-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--accent)] hover:bg-[var(--accent-dim)] transition-all cursor-pointer"
+          className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[var(--text-faint)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-[var(--accent)] hover:bg-[var(--accent-dim)] transition-all cursor-pointer"
           title="Open"
         >
           <ExternalLink size={11} />
@@ -100,7 +100,7 @@ function AgendaItem({ event }: { event: AgendaEvent }) {
       {event.url && (
         <button
           onClick={() => window.open(event.url, '_blank')}
-          className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[var(--text-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--accent)] hover:bg-[var(--accent-dim)] transition-all cursor-pointer"
+          className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[var(--text-faint)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-[var(--accent)] hover:bg-[var(--accent-dim)] transition-all cursor-pointer"
         >
           <ExternalLink size={11} />
         </button>
@@ -203,7 +203,7 @@ function ArtifactBlockRenderer({ block }: { block: AssistantBlock }) {
         {block.items.map((item) => (
           <div key={item.label} className="flex items-start gap-2 px-3 py-2">
             <div className="w-16 shrink-0 text-[10px] font-mono uppercase tracking-wider text-[var(--text-faint)]">{item.label}</div>
-            <div className="text-[11px] text-[var(--text)] break-words min-w-0" dangerouslySetInnerHTML={{ __html: renderMarkdown(item.value) }} />
+            <div className="text-[11px] text-[var(--text)] break-words min-w-0" dangerouslySetInnerHTML={{ __html: safeMarkdown(item.value) }} />
           </div>
         ))}
       </div>

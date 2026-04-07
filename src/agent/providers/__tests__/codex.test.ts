@@ -282,6 +282,9 @@ describe('ensureCodexServer', () => {
 describe('createCodexClient', () => {
   const config = { provider: 'codex' as const, apiKey: '', model: 'o4-mini' };
 
+  /** Wait enough microtask ticks for the server promise + .finally() to settle */
+  const waitForServer = () => new Promise(r => setTimeout(r, 10));
+
   function setupServerMock() {
     const proc = new EventEmitter() as any;
     proc.stdout = new EventEmitter();
@@ -331,7 +334,7 @@ describe('createCodexClient', () => {
     const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
 
     const completePromise = client.complete(messages);
-    await new Promise(r => process.nextTick(r)); // let server spawn
+    await waitForServer();
     const ws = getLastWs();
     replyWithSuccess(ws, 'Hi there!');
 
@@ -349,7 +352,7 @@ describe('createCodexClient', () => {
     const client = createCodexClient(config);
 
     const completePromise = client.complete([{ role: 'user', content: 'Hi' }]);
-    await new Promise(r => process.nextTick(r));
+    await waitForServer();
     const ws = getLastWs();
     replyWithSuccess(ws, 'Hello!');
 
@@ -368,7 +371,7 @@ describe('createCodexClient', () => {
     }];
 
     const completePromise = client.complete([{ role: 'user', content: 'Search' }], { tools });
-    await new Promise(r => process.nextTick(r));
+    await waitForServer();
     const ws = getLastWs();
     replyWithSuccess(ws, 'Done');
 
@@ -394,7 +397,7 @@ describe('createCodexClient', () => {
     const client = createCodexClient(config);
 
     const completePromise = client.complete([{ role: 'user', content: 'Hi' }]);
-    await new Promise(r => process.nextTick(r));
+    await waitForServer();
     const ws = getLastWs();
     process.nextTick(() => {
       ws.emit('open');
@@ -413,7 +416,7 @@ describe('createCodexClient', () => {
       [{ role: 'user', content: 'Hi' }],
       { signal: controller.signal }
     );
-    await new Promise(r => process.nextTick(r));
+    await waitForServer();
     const ws = getLastWs();
     process.nextTick(() => {
       ws.emit('open');
@@ -443,11 +446,11 @@ describe('testCodexConnection', () => {
 
     const testPromise = testCodexConnection(config);
     // Let the server spawn and WS connect
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise(r => setTimeout(r, 50));
     const ws = mockWsInstances[mockWsInstances.length - 1];
     if (ws) {
       ws.emit('open');
-      await new Promise(r => process.nextTick(r));
+      await new Promise(r => setTimeout(r, 10)); // let send() fire
       const sent = JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}');
       ws.emit('message', JSON.stringify({
         jsonrpc: '2.0', id: sent.id,

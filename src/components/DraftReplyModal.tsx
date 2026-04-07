@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Edit3, Trash2, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { api, type OriginalMessage } from '../services/api';
 
@@ -40,6 +40,41 @@ export default function DraftReplyModal({ draft, subject, to, threadId, original
   const [error, setError] = useState<string | null>(null);
   const [quotedExpanded, setQuotedExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Escape key to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !sending) onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, sending]);
+
+  // Focus trap — keep focus within the dialog
+  const handleFocusTrap = useCallback((e: KeyboardEvent) => {
+    if (e.key !== 'Tab' || !dialogRef.current) return;
+    const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleFocusTrap);
+    // Auto-focus the textarea on mount
+    textareaRef.current?.focus();
+    return () => document.removeEventListener('keydown', handleFocusTrap);
+  }, [handleFocusTrap]);
 
   const handleSend = async () => {
     setSending(true);
@@ -58,8 +93,8 @@ export default function DraftReplyModal({ draft, subject, to, threadId, original
   const lastOriginal = hasOriginal ? originalMessages[originalMessages.length - 1] : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-[640px] mx-4 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--radius-md)] shadow-[var(--shadow-elevated)] flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={`Reply to: ${subject}`} className="w-full max-w-[640px] mx-4 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--radius-md)] shadow-[var(--shadow-elevated)] flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
           <div className="flex-1 min-w-0">

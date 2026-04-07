@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Send, Loader2, Check, X, Mail, Pencil, Eye } from 'lucide-react';
 import { api } from '../services/api';
 import type { EmailDraftData } from '../shared/chat';
-import { renderMarkdown } from './ChatThread';
+import { safeMarkdown } from './ChatThread';
 
 function stripMarkdown(text: string): string {
   let html = text
@@ -209,7 +209,7 @@ export default function EmailDraftCard({ data }: Props) {
           </div>
           {previewMode ? (
             <div
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+              dangerouslySetInnerHTML={{ __html: safeMarkdown(body) }}
               style={{ width: '100%', minHeight: '120px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--bg)', padding: '8px 12px', fontSize: '12px', color: 'var(--text)', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}
             />
           ) : (

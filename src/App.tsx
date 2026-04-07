@@ -250,6 +250,50 @@ function AppInner() {
     }
   }, [activeView]);
 
+  // Escape key to close thread details panel
+  useEffect(() => {
+    if (!isThreadDetailsOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsThreadDetailsOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isThreadDetailsOpen]);
+
+  // ── Global keyboard shortcuts ──────────────────────────────────────
+  useEffect(() => {
+    const handleGlobalKeys = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
+
+      // Cmd+/ — toggle chat panel
+      if (meta && e.key === '/') {
+        e.preventDefault();
+        toggleChatPanel();
+        return;
+      }
+
+      // Cmd+N — new chat
+      if (meta && e.key === 'n' && !e.shiftKey) {
+        e.preventDefault();
+        newChat();
+        return;
+      }
+
+      // Cmd+1..5 — switch views (only when not in an input)
+      if (meta && !isInput && e.key >= '1' && e.key <= '5') {
+        e.preventDefault();
+        const views: ActiveView[] = ['dashboard', 'gmail', 'calendar', 'tasks', 'settings'];
+        const idx = parseInt(e.key, 10) - 1;
+        if (views[idx]) setActiveView(views[idx]);
+        return;
+      }
+    };
+    document.addEventListener('keydown', handleGlobalKeys);
+    return () => document.removeEventListener('keydown', handleGlobalKeys);
+  }, [toggleChatPanel, newChat, setActiveView]);
+
   // Resizable chat panel
   const [chatWidth, setChatWidth] = useState<number>(() => {
     const saved = window.localStorage.getItem(CHAT_WIDTH_KEY);
@@ -302,9 +346,18 @@ function AppInner() {
       case 'draft_reply':
         if (action.context.thread_id) handleDraftReply(action.context.thread_id);
         break;
-      case 'open_form':
-        if (action.context.form_url) window.open(action.context.form_url, '_blank');
+      case 'open_form': {
+        const formUrl = action.context.form_url;
+        if (formUrl) {
+          try {
+            const parsed = new URL(formUrl);
+            if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+              window.open(formUrl, '_blank', 'noopener,noreferrer');
+            }
+          } catch { /* invalid URL — ignore */ }
+        }
         break;
+      }
       case 'suggest_time': {
         const prompt = action.needs_input
           ? `The email "${action.context.subject || 'meeting request'}" needs scheduling. ${action.needs_input}${action.conflict ? ` Note: ${action.conflict}` : ''}`
@@ -777,50 +830,27 @@ function AppInner() {
                 ) : (
                   <>
                     {showWorkspaceTabs ? (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => {
-                            closeChat();
-                            setActiveView('dashboard');
-                          }}
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
-                            activeView === 'dashboard'
-                              ? 'border-[var(--accent)]/35 bg-[var(--accent-glow)] text-[var(--text)]'
-                              : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-faint)] hover:text-[var(--text)] hover:border-[var(--border2)]'
-                          }`}
-                        >
-                          Home
-                        </button>
-                        <button
-                          onClick={() => setActiveView('gmail')}
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
-                            activeView === 'gmail'
-                              ? 'border-[var(--accent)]/35 bg-[var(--accent-glow)] text-[var(--text)]'
-                              : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-faint)] hover:text-[var(--text)] hover:border-[var(--border2)]'
-                          }`}
-                        >
-                          Gmail
-                        </button>
-                        <button
-                          onClick={() => setActiveView('calendar')}
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
-                            activeView === 'calendar'
-                              ? 'border-[var(--accent)]/35 bg-[var(--accent-glow)] text-[var(--text)]'
-                              : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-faint)] hover:text-[var(--text)] hover:border-[var(--border2)]'
-                          }`}
-                        >
-                          Calendar
-                        </button>
-                        <button
-                          onClick={() => setActiveView('tasks')}
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
-                            activeView === 'tasks'
-                              ? 'border-[var(--accent)]/35 bg-[var(--accent-glow)] text-[var(--text)]'
-                              : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-faint)] hover:text-[var(--text)] hover:border-[var(--border2)]'
-                          }`}
-                        >
-                          Tasks
-                        </button>
+                      <div className="flex items-center gap-2 shrink-0" role="tablist" aria-label="Workspace views">
+                        {([
+                          { key: 'dashboard' as ActiveView, label: 'Home', action: () => { closeChat(); setActiveView('dashboard'); } },
+                          { key: 'gmail' as ActiveView, label: 'Gmail', action: () => setActiveView('gmail') },
+                          { key: 'calendar' as ActiveView, label: 'Calendar', action: () => setActiveView('calendar') },
+                          { key: 'tasks' as ActiveView, label: 'Tasks', action: () => setActiveView('tasks') },
+                        ] as const).map((tab) => (
+                          <button
+                            key={tab.key}
+                            role="tab"
+                            aria-selected={activeView === tab.key}
+                            onClick={tab.action}
+                            className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
+                              activeView === tab.key
+                                ? 'border-[var(--accent)]/35 bg-[var(--accent-glow)] text-[var(--text)]'
+                                : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-faint)] hover:text-[var(--text)] hover:border-[var(--border2)]'
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
                       </div>
                     ) : (
                       <div
@@ -1088,12 +1118,23 @@ function AppInner() {
         </aside>
       )}
 
+      {/* Mobile chat FAB — visible below lg breakpoint when chat panel is closed */}
+      {!chatPanelOpen && (
+        <button
+          onClick={toggleChatPanel}
+          className="fixed bottom-5 right-5 z-30 flex lg:hidden h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg hover:brightness-110 transition-all cursor-pointer"
+          aria-label="Open AI assistant"
+        >
+          <Sparkles size={20} />
+        </button>
+      )}
+
       {/* Chat panel — mobile: animated overlay */}
       <AnimatePresence>
         {chatPanelOpen && (
           <motion.aside
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 480, opacity: 1 }}
+            animate={{ width: Math.min(480, window.innerWidth), opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.25, ease: 'easeInOut' }}
             className="lg:hidden h-screen flex flex-col border-l border-[var(--border)] bg-[var(--bg-elevated)] overflow-hidden shrink-0"
@@ -1117,6 +1158,9 @@ function AppInner() {
               onClick={() => setIsThreadDetailsOpen(false)}
             />
             <motion.aside
+              role="dialog"
+              aria-modal="true"
+              aria-label="Thread details"
               initial={{ x: 320, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 320, opacity: 0 }}
