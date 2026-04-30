@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # FlowSpace release script
-# Creates a GitHub release on melrefaiy2018/flowspace with a bundled tarball.
+# Creates a GitHub release on mohamedelrefaiy/flowspace with a bundled tarball.
 #
 # Usage:
 #   ./scripts/release.sh           # uses version from package.json
 #   ./scripts/release.sh --dry-run # builds and packages but does not publish
 
-REPO="melrefaiy2018/flowspace"
+REPO="mohamedelrefaiy/flowspace"
 DRY_RUN=false
 
 for arg in "$@"; do

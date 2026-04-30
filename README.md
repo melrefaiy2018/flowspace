@@ -53,7 +53,7 @@ It runs as a **local web app** with zero cloud infrastructure. Your data stays b
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/melrefaiy2018/FlowSpace.git
+git clone https://github.com/mohamedelrefaiy/flowspace.git
 cd FlowSpace
 make install
 ```

@@ -8,7 +8,7 @@
 
 services:
   flowspace:
-    image: ghcr.io/melrefaiy2018/flowspace:latest
+    image: ghcr.io/mohamedelrefaiy/flowspace:latest
     # build:
     #   context: .
     #   secrets:

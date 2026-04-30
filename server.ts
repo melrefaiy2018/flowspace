@@ -1312,7 +1312,7 @@ const VERSION_CACHE_TTL = 3_600_000; // 1 hour
 function fetchLatestRelease(): Promise<{ tag: string; url: string } | null> {
   return new Promise((resolve) => {
     const req = https.get(
-      'https://api.github.com/repos/melrefaiy2018/FlowSpace/releases/latest',
+      'https://api.github.com/repos/mohamedelrefaiy/flowspace/releases/latest',
       { headers: { 'User-Agent': 'FlowSpace', Accept: 'application/vnd.github.v3+json' }, timeout: 5000 },
       (res) => {
         if (res.statusCode !== 200) { resolve(null); res.resume(); return; }

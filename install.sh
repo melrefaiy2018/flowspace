@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # FlowSpace installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/melrefaiy2018/flowspace/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/mohamedelrefaiy/flowspace/main/install.sh | bash
 
-REPO="melrefaiy2018/flowspace"
+REPO="mohamedelrefaiy/flowspace"
 INSTALL_DIR="$HOME/.flowspace"
 BIN_DIR="/usr/local/bin"
 BINARY="$BIN_DIR/flowspace"

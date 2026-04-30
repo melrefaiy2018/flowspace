@@ -2,7 +2,7 @@
 
 PORT             ?= 3000
 IMAGE            ?= flowspace
-REGISTRY         ?= ghcr.io/melrefaiy2018/flowspace
+REGISTRY         ?= ghcr.io/mohamedelrefaiy/flowspace
 FLOWSPACE_DATA   ?= $(HOME)/.flowspace
 VERSION          := $(shell node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
 
