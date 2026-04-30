@@ -79,7 +79,7 @@ It runs as a **local web app** with zero cloud infrastructure. Your data stays b
 
 - **Node.js 20+** — [nodejs.org](https://nodejs.org)
 - **A Google account** (personal or Workspace)
-- **An AI API key** — OpenAI, Anthropic, OpenRouter, or a local model (optional for read-only use)
+- **An AI API key** — OpenAI, Anthropic, OpenRouter, or a local model
 
 ### Install
 
@@ -87,7 +87,7 @@ It runs as a **local web app** with zero cloud infrastructure. Your data stays b
 curl -fsSL https://raw.githubusercontent.com/mohamedelrefaiy/flowspace/main/install.sh | bash
 ```
 
-Then run:
+Then run in the terminal:
 
 ```bash
 flowspace
