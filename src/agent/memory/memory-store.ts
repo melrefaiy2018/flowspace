@@ -46,6 +46,8 @@ let fileIO: MemoryFileIO | null = null;
 let currentUser: string | null = null;
 let memoryCache: MemoryEntry[] = [];
 let isInitialized = false;
+let batchMode = false;
+let pendingWrite = false;
 
 export function setMemoryFileIO(io: MemoryFileIO | null, userHash: string): void {
   fileIO = io;
@@ -57,6 +59,28 @@ export function setMemoryFileIO(io: MemoryFileIO | null, userHash: string): void
 export function resetMemoryStore(): void {
   memoryCache = [];
   isInitialized = false;
+  batchMode = false;
+  pendingWrite = false;
+}
+
+/** Begin a write batch — subsequent writeFile calls accumulate in cache without disk I/O. */
+export function beginBatch(): void {
+  batchMode = true;
+  pendingWrite = false;
+}
+
+/** Flush a write batch — if any writes were deferred, commit them to disk now. */
+export function flushBatch(): void {
+  batchMode = false;
+  if (pendingWrite) {
+    const io = getIO();
+    const filePath = io.getFilePath();
+    const tmpPath = filePath + '.tmp';
+    const data: MemoryFile = { version: 1, entries: [...memoryCache] };
+    io.write(tmpPath, JSON.stringify(data, null, 2));
+    io.rename(tmpPath, filePath);
+    pendingWrite = false;
+  }
 }
 
 export function isMemoryInitialized(): boolean {
@@ -114,6 +138,11 @@ function readFile(): MemoryEntry[] {
 }
 
 function writeFile(entries: MemoryEntry[]): void {
+  if (batchMode) {
+    pendingWrite = true;
+    memoryCache = entries;
+    return;
+  }
   const io = getIO();
   const filePath = io.getFilePath();
   const tmpPath = filePath + '.tmp';

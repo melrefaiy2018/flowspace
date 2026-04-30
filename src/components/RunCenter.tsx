@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Activity, CheckCircle2, Clock3, ExternalLink, RefreshCw, ShieldCheck, XCircle, ChevronRight, AlertCircle, Info, Check, X, Layers } from 'lucide-react';
+import EmptyState from './EmptyState';
 import { useChatContext } from '../context/ChatContext';
 import type { RunStatus, ApprovalRequest } from '../shared/chat';
 import { motion, AnimatePresence } from 'motion/react';
@@ -165,13 +166,9 @@ export default function RunCenter() {
           )}
         </div>
         
-        <span className="hidden sm:inline text-[12px] font-medium whitespace-nowrap">Cowork Center</span>
+        <span className="hidden sm:inline text-[12px] font-medium whitespace-nowrap">Run Status</span>
         
         <div className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded-md bg-black/5 font-mono text-[10px]">
-          {notificationCount > 0 && (
-            <span className="text-[var(--text)]">{notificationCount}N</span>
-          )}
-          {notificationCount > 0 && (awaitingCount > 0 || activeCount > 0) && <span className="opacity-20">/</span>}
           {awaitingCount > 0 && (
             <span className="text-[var(--amber)] font-bold">{awaitingCount}A</span>
           )}
@@ -256,13 +253,12 @@ export default function RunCenter() {
 
                     <div className="space-y-2.5">
                       {filteredRuns.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-                          <div className="w-10 h-10 rounded-full bg-[var(--surface2)] flex items-center justify-center mb-3 text-[var(--text-faint)]">
-                            <Info size={20} />
-                          </div>
-                          <div className="text-[13px] font-medium text-[var(--text-dim)]">No activity found</div>
-                          <div className="text-[11px] text-[var(--text-faint)] mt-1">Delegate a task to see it tracked here in real-time.</div>
-                        </div>
+                        <EmptyState
+                          icon={Info}
+                          title="No activity found"
+                          description="Delegate a task to see it tracked here in real-time."
+                          size="sm"
+                        />
                       )}
                       {filteredRuns.map((run) => (
                         <div key={run.id} className="group rounded-[10px] border border-[var(--border)] p-3 bg-[var(--bg)] hover:border-[var(--border2)] transition-colors">
@@ -348,13 +344,12 @@ export default function RunCenter() {
                 {activeTab === 'approvals' && (
                   <div className="p-3">
                     {pendingApprovals.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-                        <div className="w-10 h-10 rounded-full bg-[var(--surface2)] flex items-center justify-center mb-3 text-[var(--text-faint)]">
-                          <CheckCircle2 size={20} />
-                        </div>
-                        <div className="text-[13px] font-medium text-[var(--text-dim)]">All caught up</div>
-                        <div className="text-[11px] text-[var(--text-faint)] mt-1">No pending actions require your signature right now.</div>
-                      </div>
+                      <EmptyState
+                        icon={CheckCircle2}
+                        title="All caught up"
+                        description="No pending actions require your signature right now."
+                        size="sm"
+                      />
                     ) : (
                       <div className="space-y-3">
                         <div className="text-[11px] text-[var(--text-faint)] px-1 mb-2">

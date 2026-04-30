@@ -84,7 +84,7 @@ export interface DynamicToolItem {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-  steps: { action: string; args: Record<string, string>; outputKey?: string }[];
+  steps: { action: string; args: Record<string, string | number | boolean>; outputKey?: string }[];
   isWriteTool: boolean;
   createdAt: string;
   label?: string;
@@ -396,6 +396,15 @@ export interface LLMSettingsResponse {
   providers: Record<string, LLMProviderConfigResponse>;
 }
 
+export interface CheckResult {
+  success: boolean;
+  error?: string;
+  latencyMs: number;
+  testedAt: string;           // ISO 8601
+  configSource: 'saved' | 'draft';
+  provider: string;           // filled in by caller
+}
+
 export interface ProviderModelOption {
   id: string;
   label: string;
@@ -520,7 +529,7 @@ export const api = {
     messages: ChatMessageInput[],
     onEvent: (event: ChatStreamEvent) => void,
     signal?: AbortSignal,
-    metadata?: { conversationId?: string; sourceMessageId?: string; threadBrief?: string },
+    metadata?: { conversationId?: string; sourceMessageId?: string; threadBrief?: string; title?: string; eventId?: string },
   ) =>
     streamJSON(
       '/api/chat/stream',
@@ -530,6 +539,8 @@ export const api = {
         conversationId: metadata?.conversationId,
         sourceMessageId: metadata?.sourceMessageId,
         threadBrief: metadata?.threadBrief,
+        title: metadata?.title,
+        eventId: metadata?.eventId,
       },
       onEvent,
       signal,
@@ -601,6 +612,23 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ threads }),
+    }),
+
+  getThreadEnrichments: (threads: GmailThreadSummary[]): Promise<import('../shared/gmail-enrichment-types').EnrichedThreadsResponse> =>
+    fetchJSON<import('../shared/gmail-enrichment-types').EnrichedThreadsResponse>('/api/ai-triage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ threads }),
+      // Matches server wall-clock budget (90s) + small slack for network.
+      // Cold-cache first run can take ~2 min on slow providers; after that
+      // the disk cache serves subsequent requests in <100ms.
+      timeoutMs: 100_000,
+    }),
+
+  getThreadBrief: (threadId: string): Promise<import('../shared/gmail-enrichment-types').ThreadBriefResponse> =>
+    fetchJSON<import('../shared/gmail-enrichment-types').ThreadBriefResponse>(`/api/thread-brief/${encodeURIComponent(threadId)}`, {
+      // Server budget is 5s (see POST /api/thread-brief handler); 3s client slack.
+      timeoutMs: 8000,
     }),
 
   draftReply: (thread_id: string) =>
@@ -698,6 +726,11 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
+    }),
+
+  checkSavedLLMProvider: (providerId: string) =>
+    fetchJSON<Omit<CheckResult, 'provider'>>(`/api/settings/llm/test/saved/${encodeURIComponent(providerId)}`, {
+      method: 'POST',
     }),
 
   getLLMProviders: () =>
@@ -798,11 +831,70 @@ export const api = {
   unsaveEmail: (id: string) =>
     fetchJSON<{ success: boolean }>(`/api/saved-emails/${id}`, { method: 'DELETE' }),
 
+  // ── Draft Queue (Proactive Meeting Prep) ────────────────────────────
+
+  scanDrafts: () =>
+    fetchJSON<import('../agent/draft-types').ScanResult>('/api/drafts/scan', { method: 'POST' }),
+
+  getDrafts: () =>
+    fetchJSON<{ drafts: import('../agent/draft-types').StagedDraft[]; lastScan: import('../agent/draft-types').ScanMeta | null }>('/api/drafts'),
+
+  approveDraft: (id: string) =>
+    fetchJSON<{
+      draft: import('../agent/draft-types').StagedDraft;
+      threadBrief: string;
+      sources: {
+        emails: import('../agent/draft-types').RelatedEmail[];
+        docs: import('../agent/draft-types').LinkedDoc[];
+        attendees: string[];
+        meetingTitle: string;
+        meetingTime: string;
+      };
+    }>(`/api/drafts/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
+
+  dismissDraft: (id: string) =>
+    fetchJSON<{ success: boolean }>(`/api/drafts/${encodeURIComponent(id)}/dismiss`, { method: 'POST' }),
+
+  toggleDraftUseful: (id: string, useful: boolean) =>
+    fetchJSON<{ success: boolean; useful: boolean }>(`/api/drafts/${encodeURIComponent(id)}/useful`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ useful }),
+    }),
+
   getDynamicTools: () =>
     fetchJSON<{ tools: DynamicToolItem[] }>('/api/dynamic-tools'),
 
   getDynamicToolActions: () =>
     fetchJSON<{ actions: string[] }>('/api/dynamic-tools/actions'),
+
+  streamWorkflowPlan: (
+    description: string,
+    availableActions: string[],
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    streamJSON(
+      '/api/dynamic-tools/plan',
+      { description, availableActions },
+      (event) => { if (event.type === 'assistant_chunk') onChunk((event as any).chunk); },
+      signal,
+    ),
+
+  streamWorkflowRefine: (
+    currentPlan: DynamicToolItem,
+    revision: string,
+    history: { role: 'user' | 'assistant'; content: string }[],
+    availableActions: string[],
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    streamJSON(
+      '/api/dynamic-tools/refine',
+      { currentPlan, revision, availableActions, history },
+      (event) => { if (event.type === 'assistant_chunk') onChunk((event as any).chunk); },
+      signal,
+    ),
 
   createDynamicTool: (tool: Omit<DynamicToolItem, 'createdAt'>) =>
     fetchJSON<{ tool: DynamicToolItem }>('/api/dynamic-tools', {
@@ -822,4 +914,116 @@ export const api = {
     fetchJSON<{ removed: boolean; name: string }>(`/api/dynamic-tools/${encodeURIComponent(name)}`, {
       method: 'DELETE',
     }),
+
+  updateWorkflowTrigger: (name: string, trigger: { enabled: boolean; filter: string; intervalMinutes?: number }): Promise<void> =>
+    fetch(`/api/dynamic-tools/${encodeURIComponent(name)}/trigger`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trigger),
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+    }),
+
+  getWorkflowTriggerStatus: (name: string): Promise<{
+    enabled: boolean;
+    filter: string | null;
+    intervalMinutes: number | null;
+    lastPollAt: number | null;
+    processedCount: number;
+    nextPollIn: number | null;
+    failures: Array<{ messageId: string; failedAt: number; error: string }>;
+  }> =>
+    fetch(`/api/dynamic-tools/${encodeURIComponent(name)}/trigger/status`).then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
+
+  retriggerWorkflow: (name: string, messageId: string): Promise<{ ok: boolean; success: boolean; error?: string }> =>
+    fetch(`/api/dynamic-tools/${encodeURIComponent(name)}/trigger/retrigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
+
+  dismissTriggerFailures: (name: string): Promise<void> =>
+    fetch(`/api/dynamic-tools/${encodeURIComponent(name)}/trigger/failures`, { method: 'DELETE' })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); }),
+
+  getAllTriggers: (): Promise<Array<{
+    workflowName: string;
+    workflowLabel: string;
+    trigger: { type: 'email_received'; enabled: boolean; filter: string; intervalMinutes?: number };
+    status: { enabled: boolean; lastPollAt: number | null; processedCount: number; nextPollIn: number | null; failures: Array<{ messageId: string; failedAt: number; error: string }> };
+  }>> =>
+    fetch('/api/dynamic-tools/triggers/all').then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
+
+  // ── Telemetry ────────────────────────────────────────────────────────────────
+
+  /**
+   * Best-effort telemetry: fires when the Gmail workspace renders a selected item.
+   * Failures are silently swallowed by the caller — never throws to the UI.
+   */
+  reportGmailWorkspaceOpen: (body: {
+    threadType: string;
+    paneKind: string;
+    durationMs: number;
+    threadId: string;
+  }): Promise<void> =>
+    fetchJSON<void>('/api/telemetry/gmail-workspace-open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => { /* best-effort — telemetry failure must not break the UI */ }),
+
+  // ── Workflow Synthesizer (007) ───────────────────────────────────
+
+  getSynthesisSettings: () => fetchJSON<SynthesisSettings>('/api/synthesizer/settings'),
+
+  updateSynthesisSettings: (patch: Partial<SynthesisSettings>) =>
+    fetchJSON<SynthesisSettings>('/api/synthesizer/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+
+  getInvocationLog: (limit = 200) =>
+    fetchJSON<{ totalEntries: number; entries: ToolInvocation[] }>(
+      `/api/synthesizer/log?limit=${encodeURIComponent(limit)}`,
+    ),
+
+  clearInvocationLog: () =>
+    fetchJSON<{ cleared: true; deletedCount: number }>('/api/synthesizer/log', {
+      method: 'DELETE',
+    }),
 };
+
+// ── Workflow Synthesizer types (mirrors src/agent/synthesizer/types.ts) ───
+
+export interface SynthesisSettings {
+  enabled: boolean;
+  minOccurrences: number;
+  lookBackDays: number;
+  maxSequenceLength: number;
+  dismissCooldownDays: number;
+  logCapEntries: number;
+  logRetentionDays: number;
+}
+
+export interface ToolInvocation {
+  id: string;
+  name: string;
+  argsHash: string;
+  timestamp: string;
+  success: boolean;
+  approval: 'auto' | 'user_approved' | 'user_rejected' | 'pending';
+  source: 'chat' | 'scheduler';
+}

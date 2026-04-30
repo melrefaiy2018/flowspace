@@ -6,7 +6,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { LLMProviderConfig, LLMSettings } from './llm-types.js';
+import type { LLMProviderConfig, LLMProviderId, LLMSettings } from './llm-types.js';
+import { getDefaultModel } from './llm-providers-meta.js';
 import { getDataDir } from '../lib/data-dir.js';
 
 function getSettingsPath(): string {
@@ -140,8 +141,8 @@ export function mergeSettings(incoming: LLMSettings): LLMSettings {
     // If the key is masked, preserve the existing key from disk
     if (isMaskedKey(config.apiKey)) {
       const preservedKey = existing?.providers[id]?.apiKey;
-      if (!preservedKey) {
-        // No existing key to fall back to — skip this provider
+      if (preservedKey === undefined) {
+        // No existing entry to fall back to — skip this provider
         continue;
       }
       mergedProviders[id] = {

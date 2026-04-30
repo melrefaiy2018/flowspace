@@ -10,7 +10,23 @@
  */
 
 import type { DynamicToolDef, DynamicToolResult, StepResult } from './dynamic-tool-types.js';
-import { executeTool } from './tools.js';
+import { executeTool, isWriteTool, buildApprovalRequest } from './tools.js';
+import type { ApprovalRequest } from '../shared/chat.js';
+
+export const AUTO_APPROVE_SAFE_ACTIONS = new Set<string>([
+  'apply_label_to_threads',
+  'archive_email_threads',
+  'restore_email_threads',
+  'mark_threads_read',
+  'mute_email_threads',
+]);
+
+/** Returned when a write step is encountered and user approval is required. */
+export interface ApprovalRequiredResult {
+  readonly type: 'approval_required';
+  readonly approval: ApprovalRequest;
+  readonly completedSteps: readonly StepResult[];
+}
 
 // ── Known static tool names (for validation) ────────────────────────
 
@@ -40,6 +56,8 @@ export function getAllowedActions(): string[] {
 interface InterpolationContext {
   readonly input: Readonly<Record<string, unknown>>;
   readonly steps: readonly (Record<string, unknown> | null)[];
+  /** Maps outputKey names to their parsed step result, for {{steps.<key>.path}} syntax. */
+  readonly outputKeys?: Readonly<Record<string, Record<string, unknown> | null>>;
 }
 
 /**
@@ -64,8 +82,10 @@ function getPath(obj: unknown, path: string): unknown {
  * Interpolate template expressions in a string.
  * Returns the resolved string with all {{...}} replaced.
  */
-export function interpolate(template: string, ctx: InterpolationContext): string {
-  return template.replace(/\{\{(.*?)\}\}/g, (_match, expr: string) => {
+export function interpolate(template: unknown, ctx: InterpolationContext): string {
+  // Accept non-string values gracefully (LLM may return numbers, booleans, etc.)
+  const str = typeof template === 'string' ? template : String(template ?? '');
+  return str.replace(/\{\{(.*?)\}\}/g, (_match, expr: string) => {
     const trimmed = expr.trim();
 
     // {{input.paramName}}
@@ -75,15 +95,23 @@ export function interpolate(template: string, ctx: InterpolationContext): string
       return value !== undefined ? String(value) : '';
     }
 
-    // {{steps.N.fieldPath}}
+    // {{steps.N.fieldPath}} or {{steps.<outputKey>.fieldPath}}
     if (trimmed.startsWith('steps.')) {
       const rest = trimmed.slice('steps.'.length);
       const dotIdx = rest.indexOf('.');
       if (dotIdx === -1) return '';
-      const stepIdx = parseInt(rest.slice(0, dotIdx), 10);
-      if (Number.isNaN(stepIdx) || stepIdx < 0 || stepIdx >= ctx.steps.length) return '';
+      const key = rest.slice(0, dotIdx);
       const fieldPath = rest.slice(dotIdx + 1);
-      const stepData = ctx.steps[stepIdx];
+
+      let stepData: Record<string, unknown> | null | undefined;
+      const stepIdx = parseInt(key, 10);
+      if (!Number.isNaN(stepIdx) && stepIdx >= 0 && stepIdx < ctx.steps.length) {
+        stepData = ctx.steps[stepIdx];
+      } else {
+        // Fall back to outputKey name lookup
+        stepData = ctx.outputKeys?.[key];
+      }
+
       if (!stepData) return '';
       const value = getPath(stepData, fieldPath);
       return value !== undefined ? String(value) : '';
@@ -96,13 +124,15 @@ export function interpolate(template: string, ctx: InterpolationContext): string
 /**
  * Interpolate all values in an args record.
  */
-function interpolateArgs(
-  args: Readonly<Record<string, string>>,
+export function interpolateArgs(
+  args: Readonly<Record<string, unknown>>,
   ctx: InterpolationContext,
 ): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(args)) {
-    result[key] = interpolate(value, ctx);
+    // Coerce non-string values (numbers, booleans) to string before interpolating
+    const strValue = typeof value === 'string' ? value : String(value ?? '');
+    result[key] = interpolate(strValue, ctx);
   }
   return result;
 }
@@ -154,11 +184,14 @@ export async function executeDynamicTool(
   tool: DynamicToolDef,
   input: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<DynamicToolResult> {
+  options?: { autoApprove?: boolean; source?: 'chat' | 'scheduler' },
+): Promise<DynamicToolResult | ApprovalRequiredResult> {
+  const source: 'chat' | 'scheduler' = options?.source ?? 'chat';
   const stepResults: StepResult[] = [];
   const parsedSteps: (Record<string, unknown> | null)[] = [];
+  const outputKeyMap: Record<string, Record<string, unknown> | null> = {};
 
-  const ctx: InterpolationContext = { input, steps: parsedSteps };
+  const ctx: InterpolationContext = { input, steps: parsedSteps, outputKeys: outputKeyMap };
 
   for (let i = 0; i < tool.steps.length; i++) {
     const step = tool.steps[i];
@@ -173,10 +206,35 @@ export async function executeDynamicTool(
 
     const resolvedArgs = interpolateArgs(step.args, ctx);
 
+    if (isWriteTool(step.action)) {
+      const isSafe = AUTO_APPROVE_SAFE_ACTIONS.has(step.action);
+      if (!(options?.autoApprove === true && isSafe)) {
+        const approval = buildApprovalRequest(step.action, resolvedArgs);
+        const approvalWithContext: ApprovalRequest = {
+          ...approval,
+          toolArgs: {
+            ...resolvedArgs,
+            _dynamicToolName: tool.name,
+            _stepIndex: i,
+            _remainingSteps: JSON.stringify(tool.steps.slice(i + 1)),
+            _outputKeys: JSON.stringify(outputKeyMap),
+          },
+        };
+        return {
+          type: 'approval_required',
+          approval: approvalWithContext,
+          completedSteps: stepResults,
+        };
+      }
+    }
+
     try {
-      const output = await executeTool(step.action, resolvedArgs, signal);
+      const output = await executeTool(step.action, resolvedArgs, signal, source);
       const parsed = tryParseJson(output);
       parsedSteps.push(parsed);
+      if (step.outputKey && parsed) {
+        outputKeyMap[step.outputKey] = parsed;
+      }
 
       const isError = output.startsWith('Error:');
       stepResults.push({
@@ -210,10 +268,25 @@ export async function executeDynamicTool(
     }
   }
 
+  // Build a structured summary so the LLM can report what happened across all steps
+  const stepSummaryLines = stepResults.map((r, i) => {
+    const label = r.action.replace(/_/g, ' ');
+    const preview = r.output.length > 300 ? r.output.slice(0, 300) + '…' : r.output;
+    return `Step ${i + 1} — ${label}:\n${preview}`;
+  });
+
   const lastResult = stepResults[stepResults.length - 1];
+  const output = [
+    `Workflow "${tool.label || tool.name}" completed ${stepResults.length} step(s).`,
+    '',
+    stepSummaryLines.join('\n\n'),
+    '',
+    `Final result:\n${lastResult?.output ?? 'No output.'}`,
+  ].join('\n');
+
   return {
     success: true,
-    output: lastResult?.output ?? 'Completed with no output.',
+    output,
     stepResults,
   };
 }

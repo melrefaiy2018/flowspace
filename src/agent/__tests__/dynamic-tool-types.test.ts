@@ -39,6 +39,27 @@ describe('toToolFunctionDef', () => {
     });
   });
 
+  it('normalizes empty parameters to { type: "object", properties: {} } for strict OpenAI-compatible providers', () => {
+    // Dynamic tools registered before the schema was tightened have
+    // `parameters: {}` on disk. Strict providers (LM Studio, etc.) reject
+    // this with invalid_union_discriminator because `type` is required.
+    const def: DynamicToolDef = {
+      name: 'legacy_tool',
+      description: 'Legacy tool with empty schema',
+      parameters: {} as unknown as DynamicToolDef['parameters'],
+      steps: [{ action: 'list_tasks', args: {} }],
+      isWriteTool: false,
+      createdAt: '2026-03-17T00:00:00Z',
+    };
+
+    const result = toToolFunctionDef(def);
+
+    expect(result.function.parameters).toEqual({
+      type: 'object',
+      properties: {},
+    });
+  });
+
   it('should not include steps, isWriteTool, or createdAt in the output', () => {
     const def: DynamicToolDef = {
       name: 'test_tool',

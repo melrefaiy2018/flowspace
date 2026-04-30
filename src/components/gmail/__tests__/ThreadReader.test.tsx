@@ -2,19 +2,14 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import ThreadReader from '../ThreadReader';
-import { api, type GmailThreadDetail } from '../../../services/api';
+import { render, screen } from '@testing-library/react';
+import ThreadReader, { MessageCard } from '../ThreadReader';
+import type { GmailThreadDetail } from '../../../services/api';
+import { ThemeProvider } from '../../../context/ThemeContext';
 
-vi.mock('../../../services/api', () => ({
-  api: {
-    draftReply: vi.fn(),
-  },
-}));
-
-vi.mock('../InlineReplyCompose', () => ({
-  default: () => <div data-testid="inline-reply-compose" />,
-}));
+function renderWithTheme(ui: React.ReactElement) {
+  return render(<ThemeProvider>{ui}</ThemeProvider>);
+}
 
 const mockOpenExternalUrl = vi.fn();
 vi.mock('../../../lib/open-external', () => ({
@@ -47,100 +42,51 @@ describe('ThreadReader', () => {
     vi.clearAllMocks();
   });
 
-  it('renders agent controls when a thread is open', () => {
-    render(
-      <ThreadReader
-        thread={makeThread()}
-        onBack={vi.fn()}
-        onArchive={vi.fn().mockResolvedValue(undefined)}
-        onTrash={vi.fn().mockResolvedValue(undefined)}
-        onAgentAction={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Agent actions')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Add to calendar' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Draft follow-up' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Create task' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Ask agent' })).toBeTruthy();
+  it('renders a message card with sender name', () => {
+    renderWithTheme(<ThreadReader thread={makeThread()} />);
+    expect(screen.getByText('Alice')).toBeTruthy();
   });
 
-  it('requires non-empty ask input before enabling Ask agent', () => {
-    render(
-      <ThreadReader
-        thread={makeThread()}
-        onBack={vi.fn()}
-        onArchive={vi.fn().mockResolvedValue(undefined)}
-        onTrash={vi.fn().mockResolvedValue(undefined)}
-        onAgentAction={vi.fn()}
-      />,
-    );
-
-    const askButton = screen.getByRole('button', { name: 'Ask agent' }) as HTMLButtonElement;
-    expect(askButton.disabled).toBe(true);
-
-    fireEvent.change(screen.getByPlaceholderText('Ask the agent about this email...'), {
-      target: { value: 'What should I do next?' },
-    });
-
-    expect(askButton.disabled).toBe(false);
+  it('renders plain text message body', () => {
+    renderWithTheme(<ThreadReader thread={makeThread()} />);
+    expect(screen.getByText('Can we meet on Friday?')).toBeTruthy();
   });
 
-  it('calls onAgentAction for quick actions and freeform asks', () => {
-    const onAgentAction = vi.fn();
-    const thread = makeThread();
-
-    render(
-      <ThreadReader
-        thread={thread}
-        onBack={vi.fn()}
-        onArchive={vi.fn().mockResolvedValue(undefined)}
-        onTrash={vi.fn().mockResolvedValue(undefined)}
-        onAgentAction={onAgentAction}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add to calendar' }));
-    expect(onAgentAction).toHaveBeenCalledWith(thread, 'add_to_calendar');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Draft follow-up' }));
-    expect(onAgentAction).toHaveBeenCalledWith(thread, 'draft_follow_up');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
-    expect(onAgentAction).toHaveBeenCalledWith(thread, 'create_task');
-
-    fireEvent.change(screen.getByPlaceholderText('Ask the agent about this email...'), {
-      target: { value: 'Summarize the key ask.' },
+  it('renders all messages in a multi-message thread', () => {
+    const thread = makeThread({
+      messages: [
+        {
+          id: 'msg-1',
+          from: 'Alice <alice@example.com>',
+          to: 'me@example.com',
+          cc: '',
+          date: '2026-03-12T10:00:00Z',
+          body: 'First message',
+          bodyType: 'text',
+          attachments: [],
+        },
+        {
+          id: 'msg-2',
+          from: 'Bob <bob@example.com>',
+          to: 'alice@example.com',
+          cc: '',
+          date: '2026-03-12T11:00:00Z',
+          body: 'Second message',
+          bodyType: 'text',
+          attachments: [],
+        },
+      ],
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask agent' }));
-
-    expect(onAgentAction).toHaveBeenCalledWith(thread, 'ask_agent', 'Summarize the key ask.');
+    renderWithTheme(<ThreadReader thread={thread} />);
+    expect(screen.getByText('First message')).toBeTruthy();
+    expect(screen.getByText('Second message')).toBeTruthy();
   });
 
-  it('keeps native reply action working unchanged', async () => {
-    vi.mocked(api.draftReply).mockResolvedValue({
-      draft: 'Thanks for the note.',
-      subject: 'Re: Lab meeting follow-up',
-      to: 'alice@example.com',
-      thread_id: 'thread-1',
-      original_messages: [],
-    });
-
-    render(
-      <ThreadReader
-        thread={makeThread()}
-        onBack={vi.fn()}
-        onArchive={vi.fn().mockResolvedValue(undefined)}
-        onTrash={vi.fn().mockResolvedValue(undefined)}
-        onAgentAction={vi.fn()}
-      />,
-    );
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /reply/i }));
-    });
-
-    expect(api.draftReply).toHaveBeenCalledWith('thread-1');
+  it('renders no toolbar, no back button, no reply button', () => {
+    renderWithTheme(<ThreadReader thread={makeThread()} />);
+    expect(screen.queryByRole('button', { name: /back/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /reply/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /archive/i })).toBeNull();
   });
 
   describe('external link handling', () => {
@@ -160,17 +106,8 @@ describe('ThreadReader', () => {
         ],
       });
 
-      render(
-        <ThreadReader
-          thread={thread}
-          onBack={vi.fn()}
-          onArchive={vi.fn().mockResolvedValue(undefined)}
-          onTrash={vi.fn().mockResolvedValue(undefined)}
-          onAgentAction={vi.fn()}
-        />,
-      );
+      renderWithTheme(<ThreadReader thread={thread} />);
 
-      // Simulate the postMessage that the injected iframe script sends on link click
       window.dispatchEvent(
         new MessageEvent('message', {
           data: { type: 'open-url', url: 'https://account.spotify.com' },
@@ -182,15 +119,7 @@ describe('ThreadReader', () => {
 
     it('ignores postMessage events with unknown types', () => {
       mockOpenExternalUrl.mockClear();
-      render(
-        <ThreadReader
-          thread={makeThread()}
-          onBack={vi.fn()}
-          onArchive={vi.fn().mockResolvedValue(undefined)}
-          onTrash={vi.fn().mockResolvedValue(undefined)}
-          onAgentAction={vi.fn()}
-        />,
-      );
+      renderWithTheme(<ThreadReader thread={makeThread()} />);
 
       window.dispatchEvent(
         new MessageEvent('message', { data: { type: 'something-else', url: 'https://evil.com' } }),
@@ -215,57 +144,45 @@ describe('ThreadReader', () => {
         ],
       });
 
-      const { container } = render(
-        <ThreadReader
-          thread={thread}
-          onBack={vi.fn()}
-          onArchive={vi.fn().mockResolvedValue(undefined)}
-          onTrash={vi.fn().mockResolvedValue(undefined)}
-          onAgentAction={vi.fn()}
-        />,
-      );
+      const { container } = renderWithTheme(<ThreadReader thread={thread} />);
 
       const iframe = container.querySelector('iframe')!;
       expect(iframe).toBeTruthy();
       expect(iframe.getAttribute('sandbox')).toContain('allow-same-origin allow-scripts');
     });
-  });
 
-  describe('HTML email dark-mode rendering', () => {
-    it('renders HTML email body inside an iframe with invert filter for dark mode', () => {
+    it('wraps HTML email content in a natural-height iframe document', () => {
       const thread = makeThread({
         messages: [
           {
             id: 'msg-html',
-            from: 'Chase <no-reply@chase.com>',
+            from: 'Calendar <calendar-notification@google.com>',
             to: 'me@example.com',
             cc: '',
             date: '2026-03-12T10:00:00Z',
-            body: '<div style="background:#fff;color:#000"><h1>Payment scheduled</h1></div>',
+            body: '<table height="100%"><tbody><tr><td>Calendar invite</td></tr></tbody></table>',
             bodyType: 'html',
             attachments: [],
           },
         ],
       });
 
-      const { container } = render(
-        <ThreadReader
-          thread={thread}
-          onBack={vi.fn()}
-          onArchive={vi.fn().mockResolvedValue(undefined)}
-          onTrash={vi.fn().mockResolvedValue(undefined)}
-          onAgentAction={vi.fn()}
-        />,
-      );
+      const { container } = renderWithTheme(<ThreadReader thread={thread} />);
 
-      const iframe = container.querySelector('iframe');
-      expect(iframe).toBeTruthy();
-      // Iframe should use CSS invert filter for reliable dark-mode, not per-element color overrides
-      const style = iframe!.getAttribute('style') ?? '';
-      expect(style).toContain('filter');
-      expect(style).toContain('invert');
+      const iframe = container.querySelector('iframe')!;
+      const iframeDocument = iframe.contentDocument!;
+      expect(iframe.className).toContain('shrink-0');
+      expect(iframeDocument.getElementById('flowspace-email-root')).toBeTruthy();
+      expect(iframeDocument.head.textContent).toContain('[height="100%"]');
+      expect(iframeDocument.head.textContent).toContain('[style*="min-height: 100%"]');
+      const inviteTable = iframeDocument.querySelector('table') as HTMLTableElement;
+      expect(inviteTable.getAttribute('height')).toBeNull();
+      expect(inviteTable.style.height).toBe('auto');
+      expect(inviteTable.style.minHeight).toBe('0px');
     });
+  });
 
+  describe('plain text email rendering', () => {
     it('renders plain text email without an iframe', () => {
       const thread = makeThread({
         messages: [
@@ -282,18 +199,43 @@ describe('ThreadReader', () => {
         ],
       });
 
-      const { container } = render(
-        <ThreadReader
-          thread={thread}
-          onBack={vi.fn()}
-          onArchive={vi.fn().mockResolvedValue(undefined)}
-          onTrash={vi.fn().mockResolvedValue(undefined)}
-          onAgentAction={vi.fn()}
-        />,
-      );
+      const { container } = renderWithTheme(<ThreadReader thread={thread} />);
 
       expect(container.querySelector('iframe')).toBeNull();
       expect(screen.getByText('Just plain text')).toBeTruthy();
     });
+  });
+});
+
+describe('MessageCard (named export)', () => {
+  it('renders sender name and date', () => {
+    const message = {
+      id: 'msg-1',
+      from: 'Alice <alice@example.com>',
+      to: 'me@example.com',
+      cc: '',
+      date: '2026-03-12T10:00:00Z',
+      body: 'Hello',
+      bodyType: 'text' as const,
+      attachments: [],
+    };
+    const { container } = renderWithTheme(<MessageCard message={message} isLast={true} />);
+    expect(screen.getByText('Alice')).toBeTruthy();
+    expect(container.firstElementChild?.className).toContain('shrink-0');
+  });
+
+  it('renders plain text body', () => {
+    const message = {
+      id: 'msg-1',
+      from: 'Alice <alice@example.com>',
+      to: 'me@example.com',
+      cc: '',
+      date: '2026-03-12T10:00:00Z',
+      body: 'Hello from Alice',
+      bodyType: 'text' as const,
+      attachments: [],
+    };
+    renderWithTheme(<MessageCard message={message} isLast={false} />);
+    expect(screen.getByText('Hello from Alice')).toBeTruthy();
   });
 });

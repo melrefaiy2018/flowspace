@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGmailAgentPrompt } from '../gmail-agent';
+import { buildGmailAgentPrompt, gmailAgentDisplayText } from '../gmail-agent';
 import type { GmailThreadDetail } from '../../services/api';
 
 function makeThread(overrides: Partial<GmailThreadDetail> = {}): GmailThreadDetail {
@@ -62,5 +62,51 @@ describe('buildGmailAgentPrompt', () => {
     expect(followUpPrompt).toContain('draft an appropriate follow-up reply');
     expect(taskPrompt).toContain('thread "thread-123"');
     expect(taskPrompt).toContain('prepare a task');
+  });
+});
+
+describe('new GmailAgentAction values', () => {
+  it('pick_times: displayText contains the subject and prompt includes thread id and slot/calendar keywords', () => {
+    const thread = makeThread();
+    const displayText = gmailAgentDisplayText(thread, 'pick_times');
+    const prompt = buildGmailAgentPrompt(thread, 'pick_times');
+
+    expect(displayText).toBeTruthy();
+    expect(displayText).toContain('Interview scheduling');
+    expect(prompt).toContain('thread-123');
+    expect(prompt.toLowerCase()).toMatch(/slots|calendar/);
+  });
+
+  it('decline: displayText contains the subject and prompt includes thread id and decline keyword', () => {
+    const thread = makeThread();
+    const displayText = gmailAgentDisplayText(thread, 'decline');
+    const prompt = buildGmailAgentPrompt(thread, 'decline');
+
+    expect(displayText).toBeTruthy();
+    expect(displayText).toContain('Interview scheduling');
+    expect(prompt).toContain('thread-123');
+    expect(prompt.toLowerCase()).toContain('decline');
+  });
+
+  it('delegate: displayText contains the subject and prompt includes thread id and delegate/handoff keyword', () => {
+    const thread = makeThread();
+    const displayText = gmailAgentDisplayText(thread, 'delegate');
+    const prompt = buildGmailAgentPrompt(thread, 'delegate');
+
+    expect(displayText).toBeTruthy();
+    expect(displayText).toContain('Interview scheduling');
+    expect(prompt).toContain('thread-123');
+    expect(prompt.toLowerCase()).toMatch(/delegate|handoff/);
+  });
+
+  it('save_to_drive: displayText contains the subject and prompt includes thread id and Drive/doc keyword', () => {
+    const thread = makeThread();
+    const displayText = gmailAgentDisplayText(thread, 'save_to_drive');
+    const prompt = buildGmailAgentPrompt(thread, 'save_to_drive');
+
+    expect(displayText).toBeTruthy();
+    expect(displayText).toContain('Interview scheduling');
+    expect(prompt).toContain('thread-123');
+    expect(prompt.toLowerCase()).toMatch(/drive|doc/);
   });
 });

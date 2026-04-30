@@ -1,0 +1,56 @@
+# Tauri desktop app (not needed for web server)
+src-tauri/
+*.dmg
+
+# Development config
+.claude/
+.opencode/
+.qwen/
+.codex/
+.github/
+
+# Test files
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+coverage/
+
+# Build tools
+scripts/
+specs/
+docs/plans/
+
+# Dev artifacts
+.DS_Store
+*.log
+.env*
+!.env.example
+.tokens.json
+.gws-credentials*.json
+.followup-state.json
+.llm-settings.json
+.dynamic-tools.json
+.persona*.json
+.importance-preferences*.json
+.memory/
+.accounts.json
+client_secret.json
+*.secret.json
+
+# Source TypeScript (shipping pre-bundled JS)
+bin/cli.ts
+bin/install.mjs
+server.ts
+server.prod.ts
+
+# Git
+.git/
+.gitignore
+
+# Misc
+.vercel
+CLAUDE.md
+TODOS.md
+Makefile
+Dockerfile
+docker-compose*.yml

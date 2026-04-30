@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { PROVIDER_META, getProviderMeta, getDefaultModel } from '../llm-providers-meta';
 
 describe('PROVIDER_META', () => {
-  it('has entries for all five providers', () => {
+  it('has entries for all six providers', () => {
     const ids = PROVIDER_META.map((p) => p.id);
     expect(ids).toContain('anthropic');
     expect(ids).toContain('openai');
     expect(ids).toContain('openrouter');
     expect(ids).toContain('lmstudio');
     expect(ids).toContain('claude-code');
-    expect(PROVIDER_META).toHaveLength(5);
+    expect(ids).toContain('codex');
+    expect(PROVIDER_META).toHaveLength(6);
   });
 
   it('every provider has at least one model', () => {

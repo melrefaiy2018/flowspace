@@ -18,6 +18,9 @@ client_secret.json
 .tokens.json
 .accounts.json
 .llm-settings.json
+.tool-invocation-log*.json
+.workflow-proposals*.json
+.workflow-proposal-samples*.json
 
 # Dev/tooling only
 specs

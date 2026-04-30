@@ -4,6 +4,7 @@
 
 import type { GmailMessage, GmailThreadSummary, InboxTriageItem } from '../services/api';
 import type { PreferenceExample } from './importance-feedback';
+import type { ThreadEnrichment, Bucket } from '../shared/gmail-enrichment-types.js';
 import { applyPreferenceExamplesToTriage } from './importance-feedback';
 
 const AUTO_SENDER_PATTERNS = /noreply@|no-reply@|notifications@|mailer-daemon@|donotreply@|newsletter@/i;
@@ -82,4 +83,45 @@ export function triageThreads(threads: readonly GmailThreadSummary[]): ThreadTri
   }
 
   return { urgent, needs_attention, informational, low_priority };
+}
+
+export interface BucketedThreads {
+  needs_reply: GmailThreadSummary[];
+  waiting: GmailThreadSummary[];
+  quick_wins: GmailThreadSummary[];
+  reference_fyi: GmailThreadSummary[];
+}
+
+export function assignBucketsFromEnrichment(
+  threads: readonly GmailThreadSummary[],
+  enrichmentMap: Map<string, ThreadEnrichment>,
+): BucketedThreads {
+  const result: BucketedThreads = {
+    needs_reply: [],
+    waiting: [],
+    quick_wins: [],
+    reference_fyi: [],
+  };
+
+  for (const thread of threads) {
+    const enrichment = enrichmentMap.get(thread.id);
+    if (!enrichment) continue;
+
+    const action = enrichment.recommendedAction || '';
+    let bucket: Bucket = enrichment.bucket;
+
+    if (enrichment.priority === 'none') {
+      bucket = 'reference_fyi';
+    } else if (action === 'nudge' || action === 'mark_done') {
+      bucket = 'waiting';
+    } else if (action === 'archive_subscription' || action === 'unsubscribe' || action === 'create_filter') {
+      bucket = 'quick_wins';
+    } else if (enrichment.priority === 'high' && action === 'draft_reply') {
+      bucket = 'needs_reply';
+    }
+
+    result[bucket].push(thread);
+  }
+
+  return result;
 }

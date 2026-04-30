@@ -42,7 +42,7 @@ function toolToForm(tool: DynamicToolItem): SkillFormState {
     parameters: JSON.stringify(tool.parameters, null, 2),
     steps: tool.steps.map((s) => ({
       action: s.action,
-      args: { ...s.args },
+      args: Object.fromEntries(Object.entries(s.args).map(([k, v]) => [k, String(v)])),
       outputKey: s.outputKey ?? '',
     })),
   };

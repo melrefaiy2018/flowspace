@@ -16,13 +16,27 @@ export interface ToolStep {
    * Arguments for the action. Values can contain template expressions:
    *   {{input.paramName}}         — references a parameter from the tool's input
    *   {{steps.N.fieldPath}}       — references a field from step N's parsed result
+   *
+   * Note: LLMs may emit numeric or boolean values; the executor coerces all
+   * values to strings before interpolation.
    */
-  readonly args: Readonly<Record<string, string>>;
+  readonly args: Readonly<Record<string, string | number | boolean>>;
   /** Optional key to store this step's result under for later reference. */
   readonly outputKey?: string;
 }
 
 // ── Dynamic tool definition ──────────────────────────────────────────
+
+export type TriggerEventType = 'email_received';
+
+export interface EmailReceivedTrigger {
+  readonly type: 'email_received';
+  readonly enabled: boolean;
+  readonly filter: string;
+  readonly intervalMinutes?: number;
+}
+
+export type WorkflowTrigger = EmailReceivedTrigger;
 
 export interface DynamicToolDef {
   /** Unique name — must not collide with static tool names. */
@@ -39,6 +53,8 @@ export interface DynamicToolDef {
   readonly createdAt?: string;
   /** Optional human-readable label for the UI. */
   readonly label?: string;
+  /** Optional trigger for automated workflow execution. */
+  readonly trigger?: WorkflowTrigger;
 }
 
 // ── Persisted file format ────────────────────────────────────────────
@@ -68,14 +84,31 @@ export interface StepResult {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Convert a DynamicToolDef into the OpenAI-compatible ToolFunctionDef format. */
+/**
+ * Convert a DynamicToolDef into the OpenAI-compatible ToolFunctionDef format.
+ *
+ * Normalizes the `parameters` JSON Schema so the wire format always has
+ * `type: 'object'` at the root. Some providers (OpenAI, Anthropic) are lenient
+ * and accept an empty object; others (LM Studio, strict OpenAI-compatible
+ * runtimes) reject it with `invalid_union_discriminator`. We store the tool
+ * exactly as the user defined it and only normalize on the way out.
+ */
 export function toToolFunctionDef(def: DynamicToolDef): ToolFunctionDef {
+  const raw = (def.parameters ?? {}) as Record<string, unknown>;
+  const parameters = {
+    type: 'object' as const,
+    properties: (raw.properties as Record<string, unknown>) ?? {},
+    ...(Array.isArray(raw.required) ? { required: raw.required as string[] } : {}),
+    ...(raw.additionalProperties !== undefined
+      ? { additionalProperties: raw.additionalProperties as boolean }
+      : {}),
+  };
   return {
     type: 'function',
     function: {
       name: def.name,
       description: def.description,
-      parameters: def.parameters,
+      parameters,
     },
   };
 }

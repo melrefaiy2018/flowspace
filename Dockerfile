@@ -2,10 +2,10 @@
 #
 # FlowSpace — single-container production image
 #
-# Build (using BuildKit secret mounts — secrets never appear in layer history):
-#   DOCKER_BUILDKIT=1 docker build \
-#     --secret id=oauth_client_id,env=OAUTH_CLIENT_ID \
-#     --secret id=oauth_client_secret,env=OAUTH_CLIENT_SECRET \
+# Build:
+#   docker build \
+#     --build-arg OAUTH_CLIENT_ID=... \
+#     --build-arg OAUTH_CLIENT_SECRET=... \
 #     -t flowspace .
 #
 # Run:
@@ -27,23 +27,32 @@ COPY . .
 RUN ./node_modules/.bin/vite build
 
 # Bundle server.mjs with OAuth credentials injected at build time.
-# Using BuildKit --mount=type=secret so credentials never appear in layer history.
+# Credentials are baked into the binary — not stored as files.
+ARG OAUTH_CLIENT_ID=""
+ARG OAUTH_CLIENT_SECRET=""
 ARG FLOWSPACE_VERSION=0.0.0-docker
 
-RUN --mount=type=secret,id=oauth_client_id \
-    --mount=type=secret,id=oauth_client_secret \
-    OAUTH_CLIENT_ID="$(cat /run/secrets/oauth_client_id 2>/dev/null || echo '')" \
-    OAUTH_CLIENT_SECRET="$(cat /run/secrets/oauth_client_secret 2>/dev/null || echo '')" \
-    npx esbuild server.ts \
-      --bundle \
-      --platform=node \
-      --format=esm \
-      --outfile=dist-server/server.mjs \
-      --target=node22 \
-      --banner:js="import{createRequire}from'module';const require=createRequire(import.meta.url);" \
-      "--define:__FLOWSPACE_VERSION__=\"${FLOWSPACE_VERSION}\"" \
-      "--define:__OAUTH_CLIENT_ID__=\"${OAUTH_CLIENT_ID}\"" \
-      "--define:__OAUTH_CLIENT_SECRET__=\"${OAUTH_CLIENT_SECRET}\""
+RUN printf '%s' "$OAUTH_CLIENT_ID"     > /tmp/oauth_id.txt && \
+    printf '%s' "$OAUTH_CLIENT_SECRET"  > /tmp/oauth_sec.txt && \
+    printf '%s' "$FLOWSPACE_VERSION"    > /tmp/version.txt && \
+    node -e " \
+      const fs = require('fs'); \
+      const { execFileSync } = require('child_process'); \
+      const id  = fs.readFileSync('/tmp/oauth_id.txt',  'utf8').trim(); \
+      const sec = fs.readFileSync('/tmp/oauth_sec.txt', 'utf8').trim(); \
+      const ver = fs.readFileSync('/tmp/version.txt',   'utf8').trim() || '0.0.0-docker'; \
+      console.log('build: id_len=' + id.length + ' sec_len=' + sec.length); \
+      execFileSync('./node_modules/.bin/esbuild', [ \
+        'server.ts', \
+        '--bundle', '--platform=node', '--format=esm', \
+        '--outfile=dist-server/server.mjs', '--target=node22', \
+        '--banner:js=import{createRequire}from\\'module\\';const require=createRequire(import.meta.url);', \
+        '--define:__FLOWSPACE_VERSION__=' + JSON.stringify(ver), \
+        '--define:__OAUTH_CLIENT_ID__='    + JSON.stringify(id), \
+        '--define:__OAUTH_CLIENT_SECRET__='+ JSON.stringify(sec), \
+      ], { stdio: 'inherit' }); \
+      fs.rmSync('/tmp/oauth_id.txt'); fs.rmSync('/tmp/oauth_sec.txt'); fs.rmSync('/tmp/version.txt'); \
+    "
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM node:22-alpine
@@ -66,12 +75,10 @@ ENV FLOWSPACE_PRODUCTION=1
 ENV HOME=/data
 ENV FLOWSPACE_DATA_DIR=/data
 ENV PORT=3000
-# In Docker, bind to 0.0.0.0 so the port forward from host works
 ENV FLOWSPACE_BIND_HOST=0.0.0.0
 
 EXPOSE 3000
 
-# Drop to non-root user
 USER flowspace
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

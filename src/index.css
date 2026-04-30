@@ -74,6 +74,85 @@
   --home-panel-bg: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
   --home-panel-shadow: 0 22px 48px rgba(0, 0, 0, 0.28);
   --max-content: 1060px;
+  --rail-gradient-stop: rgba(10, 10, 12, 0.98);
+  --kanban-col-bg: rgba(255, 255, 255, 0.03);
+  --kanban-col-border: rgba(255, 255, 255, 0.065);
+  --kanban-header-border: rgba(255, 255, 255, 0.055);
+}
+
+[data-theme="light"] {
+  /* ── Backgrounds ──────────────────────────────────────────── */
+  --bg:                 #f4f4f5;
+  --bg-elevated:        #ffffff;
+
+  /* ── Surfaces ─────────────────────────────────────────────── */
+  --surface:            #ffffff;
+  --surface2:           #f0f0f2;
+  --surface3:           #e8e8eb;
+  --surface-soft:       #f7f7f8;
+  --surface-strong:     #e4e4e7;
+  --surface-hover:      #ebebed;
+
+  /* ── Borders ──────────────────────────────────────────────── */
+  --border:             #e2e2e5;
+  --border2:            #d1d1d6;
+  --section-divider:    rgba(0, 0, 0, 0.07);
+
+  /* ── Text ─────────────────────────────────────────────────── */
+  --text:               #111113;
+  --text-dim:           #4b4b52;
+  --text-faint:         #8c8c96;
+
+  /* ── Accent (same green, works on both themes) ─────────────── */
+  --accent:             #22c55e;
+  --accent-rgb:         34, 197, 94;
+  --accent-dim:         #dcfce7;
+  --accent-border:      #86efac;
+  --accent-glow:        rgba(34, 197, 94, 0.08);
+  --accent-glow-strong: rgba(34, 197, 94, 0.16);
+
+  /* ── Amber / Warn ─────────────────────────────────────────── */
+  --amber:              #d97706;
+  --amber-dim:          #fef3c7;
+  --amber-border:       #fcd34d;
+  --warn:               #d97706;
+  --warn-dim:           #fef3c7;
+
+  /* ── Blue ─────────────────────────────────────────────────── */
+  --blue:               #2563eb;
+  --blue-dim:           #dbeafe;
+  --blue-border:        #93c5fd;
+
+  /* ── Error / Red ──────────────────────────────────────────── */
+  --error:              #dc2626;
+  --error-dim:          #fee2e2;
+  --red:                #dc2626;
+  --red-dim:            #fee2e2;
+  --red-border:         #fca5a5;
+
+  /* ── Green ────────────────────────────────────────────────── */
+  --green:              #16a34a;
+  --green-dim:          #dcfce7;
+  --green-border:       #86efac;
+
+  /* ── Purple ───────────────────────────────────────────────── */
+  --purple:             #7c3aed;
+  --purple-dim:         #ede9fe;
+  --purple-border:      #c4b5fd;
+
+  /* ── Shadows ──────────────────────────────────────────────── */
+  --shadow-card:     0 1px 3px rgba(0, 0, 0, 0.10), 0 0 0 1px var(--border);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--border);
+
+  /* ── Composite tokens ─────────────────────────────────────── */
+  --home-panel-bg:     linear-gradient(180deg, rgba(0, 0, 0, 0.025), rgba(0, 0, 0, 0.01));
+  --home-panel-shadow: 0 22px 48px rgba(0, 0, 0, 0.10);
+
+  /* ── Overlay helpers (replaces hardcoded rgba(255,255,255,X)) ─ */
+  --rail-gradient-stop: rgba(244, 244, 245, 0.98);
+  --kanban-col-bg:      rgba(0, 0, 0, 0.02);
+  --kanban-col-border:  rgba(0, 0, 0, 0.07);
+  --kanban-header-border: rgba(0, 0, 0, 0.06);
 }
 
 body {
@@ -94,23 +173,76 @@ body {
 
 .home-dashboard {
   background-color: var(--bg);
+}
+.home-dashboard > div:first-child {
   background-image:
-    radial-gradient(circle at top, rgba(var(--accent-rgb), 0.08), transparent 32%),
-    linear-gradient(180deg, rgba(255,255,255,0.02), transparent 18%),
-    radial-gradient(circle, rgba(255,255,255,0.022) 1px, transparent 1px);
-  background-size: auto, auto, 28px 28px;
+    radial-gradient(circle at 50% 0%, rgba(var(--accent-rgb), 0.06), transparent 40%),
+    linear-gradient(180deg, rgba(255,255,255,0.015), transparent 20%);
+}
+
+/* ── Signal cards ──────────────────────────────────────────────── */
+.signal-card {
+  transition: border-color 0.12s, background 0.12s, filter 0.1s;
+}
+.signal-card:hover {
+  filter: brightness(1.06);
+}
+.signal-card:active {
+  filter: brightness(0.96);
+}
+
+/* ── Workspace sections ────────────────────────────────────────── */
+.workspace-section {
+  background: var(--surface);
+  transition: border-color 0.15s;
+}
+
+/* ── Attention section scroll target ──────────────────────────── */
+@keyframes attention-flash {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--amber) 40%, transparent); }
+  40%  { box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 20%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.attention-highlight > * {
+  animation: attention-flash 1.1s ease-out forwards;
+}
+
+/* ── System Context Band ───────────────────────────────────────── */
+.context-band-container {
+  background: var(--surface);
+}
+
+.context-band-header {
+  background: color-mix(in srgb, var(--surface2) 60%, var(--surface));
+}
+
+.context-band-col {
+  transition: background 0.1s;
+  cursor: pointer;
+}
+.context-band-col:hover {
+  background: var(--surface2);
+}
+
+/* ── App rail — layered depth ──────────────────────────────────── */
+.app-rail {
+  background: linear-gradient(180deg, var(--bg-elevated), var(--rail-gradient-stop));
+  border-right: 1px solid var(--border);
+}
+.rail-history {
+  background: rgba(0, 0, 0, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.035);
 }
 
 .home-panel {
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 26px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: var(--home-panel-bg);
   box-shadow: var(--home-panel-shadow);
-  backdrop-filter: blur(16px);
 }
 
 .home-panel-secondary {
-  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.02));
+  background: var(--surface2);
 }
 
 .home-section-header {
@@ -172,11 +304,11 @@ body {
 .kanban-board {
   display: flex;
   flex-direction: row;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0 16px 16px;
+  padding: 8px 16px 16px;
   scrollbar-width: thin;
   scrollbar-color: var(--border2) transparent;
 }
@@ -185,20 +317,26 @@ body {
 .kanban-board::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
 
 .kanban-column {
-  width: 300px;
-  min-width: 300px;
-  flex-shrink: 0;
+  flex: 1 1 0;
+  min-width: 240px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  border-radius: 18px;
-  background: rgba(255,255,255,0.035);
-  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 16px;
+  background: var(--kanban-col-bg);
+  border: 1px solid var(--kanban-col-border);
   overflow: hidden;
+  transition: border-color 0.2s;
 }
 .kanban-column--wide {
-  width: 340px;
-  min-width: 340px;
+  flex: 1.4 1 0;
+  min-width: 280px;
+}
+.kanban-column--collapsed {
+  flex: 0 0 44px !important;
+  min-width: 44px !important;
+  max-width: 44px !important;
+  cursor: pointer;
 }
 
 .kanban-column-header {
@@ -206,15 +344,17 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px 11px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding: 11px 14px 10px;
+  border-bottom: 1px solid var(--kanban-header-border);
   flex-shrink: 0;
+  position: relative;
 }
 .kanban-column-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 .kanban-column-body {
@@ -241,10 +381,147 @@ body {
   }
   .kanban-column,
   .kanban-column--wide {
+    flex: none;
     width: 100%;
     min-width: 0;
+    max-width: none;
     height: auto;
   }
+}
+
+/* ── Horizon View: prose brief content ───────────────────────────────────── */
+.prose-horizon {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+/* Headings from markdown renderer */
+.prose-horizon h1, .prose-horizon h2, .prose-horizon h3, .prose-horizon h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 1.5em;
+  margin-bottom: 0.35em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.prose-horizon h1:first-child, .prose-horizon h2:first-child, .prose-horizon h3:first-child {
+  margin-top: 0;
+}
+
+/* Paragraphs */
+.prose-horizon p {
+  margin-bottom: 0.6em;
+  color: var(--text-dim);
+}
+
+/* Numbered section headers inside paragraphs (e.g. "1. Meeting Overview") */
+.prose-horizon p:has(> strong:first-child),
+.prose-horizon p:has(> b:first-child) {
+  margin-top: 1.25em;
+  margin-bottom: 0.3em;
+}
+
+/* Nested indented content */
+.prose-horizon ul, .prose-horizon ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.65em;
+}
+.prose-horizon li { margin-bottom: 0.25em; color: var(--text-dim); }
+
+/* Bold/strong emphasis */
+.prose-horizon strong, .prose-horizon b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Italic */
+.prose-horizon em { color: var(--text-faint); font-style: italic; }
+
+/* Horizontal rules as section dividers */
+.prose-horizon hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+
+/* Inline code */
+.prose-horizon code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  color: var(--accent);
+}
+
+/* Code blocks */
+.prose-horizon pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 0.75em;
+  overflow-x: auto;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+
+/* ── Horizon: operational summary grid ──────────────────────────────────── */
+.horizon-ops-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  align-items: start;
+}
+
+/* ── Horizon: activity log ─────────────────────────────────────────────── */
+.horizon-activity-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--section-divider);
+}
+.horizon-activity-entry:last-child {
+  border-bottom: none;
+}
+
+/* ── Horizon: guide chips ──────────────────────────────────────────────── */
+.horizon-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-faint);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.horizon-chip:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ── Horizon: status badge ─────────────────────────────────────────────── */
+.horizon-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border-radius: 99px;
+  padding: 2px 7px;
 }
 
 /* Custom Scrollbar */

@@ -1,0 +1,20 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for FlowSpace",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "shell:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        }
+      ]
+    }
+  ]
+}

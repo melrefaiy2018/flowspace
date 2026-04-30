@@ -43,12 +43,10 @@ describe('AttentionPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ignore' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Important' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Not important' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss:/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Not relevant:/i }));
 
     expect(onIgnore).toHaveBeenCalledWith(expect.objectContaining({ entity_id: 'thread-1' }));
-    expect(onImportant).toHaveBeenCalledWith(expect.objectContaining({ entity_id: 'thread-1' }));
     expect(onNotImportant).toHaveBeenCalledWith(expect.objectContaining({ entity_id: 'thread-1' }));
   });
 
@@ -75,7 +73,7 @@ describe('AttentionPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ignore' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss:/i }));
 
     expect(onIgnore).toHaveBeenCalledWith(expect.objectContaining({
       scope: 'attention_item',

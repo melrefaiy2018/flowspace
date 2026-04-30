@@ -24,17 +24,16 @@ describe('getDataDir', () => {
     return mod.getDataDir;
   }
 
-  it('uses FLOWSPACE_DATA_DIR when set (inside home)', async () => {
-    const testDir = path.join(os.homedir(), '.test-flowspace');
-    process.env.FLOWSPACE_DATA_DIR = testDir;
+  it('uses FLOWSPACE_DATA_DIR when set', async () => {
+    process.env.FLOWSPACE_DATA_DIR = '/tmp/test-flowspace';
     const getDataDir = (await import('../data-dir.js')).getDataDir;
-    expect(getDataDir()).toBe(testDir);
+    expect(getDataDir()).toBe('/tmp/test-flowspace');
   });
 
-  it('rejects FLOWSPACE_DATA_DIR outside home directory', async () => {
-    process.env.FLOWSPACE_DATA_DIR = '/tmp/outside-home';
+  it('resolves relative FLOWSPACE_DATA_DIR to absolute path', async () => {
+    process.env.FLOWSPACE_DATA_DIR = './relative-dir';
     const getDataDir = (await import('../data-dir.js')).getDataDir;
-    expect(() => getDataDir()).toThrow('must be inside the home directory');
+    expect(path.isAbsolute(getDataDir())).toBe(true);
   });
 
   it('uses macOS App Support in production mode (NODE_ENV)', async () => {
@@ -52,11 +51,10 @@ describe('getDataDir', () => {
   });
 
   it('FLOWSPACE_DATA_DIR takes precedence over production mode', async () => {
-    const customPath = path.join(os.homedir(), '.custom-flowspace');
-    process.env.FLOWSPACE_DATA_DIR = customPath;
+    process.env.FLOWSPACE_DATA_DIR = '/custom/path';
     process.env.NODE_ENV = 'production';
     const getDataDir = (await import('../data-dir.js')).getDataDir;
-    expect(getDataDir()).toBe(customPath);
+    expect(getDataDir()).toBe('/custom/path');
   });
 
   it('defaults to cwd in dev mode', async () => {

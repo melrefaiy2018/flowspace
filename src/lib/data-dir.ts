@@ -34,16 +34,7 @@ function isProduction(): boolean {
 
 export function getDataDir(): string {
   const explicit = process.env.FLOWSPACE_DATA_DIR;
-  if (explicit) {
-    const resolved = path.resolve(explicit);
-    const home = os.homedir();
-    if (!resolved.startsWith(home + path.sep) && resolved !== home) {
-      throw new Error(
-        `FLOWSPACE_DATA_DIR must be inside the home directory (${home}), got: ${resolved}`
-      );
-    }
-    return resolved;
-  }
+  if (explicit) return path.resolve(explicit);
 
   if (isProduction()) return MACOS_APP_SUPPORT;
 

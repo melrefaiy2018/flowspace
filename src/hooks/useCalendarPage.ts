@@ -2,8 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type CalendarEventDetail } from '../services/api';
 import { useEventClassification, type UseEventClassificationReturn } from './useEventClassification';
 
-export type CalendarView = 'week' | 'day' | 'month' | 'agenda';
+export type CalendarView = 'timeline' | 'focus' | 'prep' | 'grid' | 'agenda';
 export type EventFilter = 'all' | 'mine' | 'team';
+export type InsightFilter =
+  | 'meeting-load'
+  | 'back-to-back'
+  | 'external'
+  | 'needs-prep'
+  | 'focus-protected'
+  | 'conflicts'
+  | null;
 
 export interface DateRange {
   start: Date;
@@ -13,20 +21,25 @@ export interface DateRange {
 export interface CalendarPageState {
   view: CalendarView;
   filter: EventFilter;
+  insightFilter: InsightFilter;
   currentDate: Date;
+  selectedDay: Date | null;
   events: CalendarEventDetail[];
   filteredEvents: CalendarEventDetail[];
   selectedEventId: string | null;
   loading: boolean;
   error: string | null;
   dateRange: DateRange;
+  lastFetchedAt: Date | null;
   goToday: () => void;
   goNext: () => void;
   goPrev: () => void;
   setView: (v: CalendarView) => void;
   setFilter: (f: EventFilter) => void;
+  setInsightFilter: (f: InsightFilter) => void;
   selectEvent: (id: string | null) => void;
   setCurrentDate: (d: Date) => void;
+  setSelectedDay: (d: Date | null) => void;
   refresh: () => void;
   classification: UseEventClassificationReturn;
 }
@@ -34,6 +47,8 @@ export interface CalendarPageState {
 const STORAGE_KEY_VIEW = 'flowspace.calendar.view';
 const STORAGE_KEY_DATE = 'flowspace.calendar.date';
 const STORAGE_KEY_FILTER = 'flowspace.calendar.filter';
+
+const VALID_VIEWS: CalendarView[] = ['timeline', 'focus', 'prep', 'grid', 'agenda'];
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -64,27 +79,22 @@ function computeDateRange(view: CalendarView, anchor: Date): DateRange {
   const today = startOfDay(anchor);
 
   switch (view) {
-    case 'day':
-      return {
-        start: today,
-        end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999),
-      };
-    case 'week': {
+    case 'timeline':
+    case 'focus':
+    case 'prep': {
+      // All semantic views show the current week (Mon–Sun)
       const weekStart = startOfWeek(today);
       return {
         start: weekStart,
         end: new Date(addDays(weekStart, 6).getFullYear(), addDays(weekStart, 6).getMonth(), addDays(weekStart, 6).getDate(), 23, 59, 59, 999),
       };
     }
-    case 'month': {
-      // Pad to full weeks for the grid
-      const monthStart = startOfMonth(today);
-      const monthEnd = endOfMonth(today);
-      const gridStart = startOfWeek(monthStart);
-      const gridEnd = addDays(startOfWeek(addDays(monthEnd, 7)), -1);
+    case 'grid': {
+      // Grid defaults to week range
+      const weekStart = startOfWeek(today);
       return {
-        start: gridStart,
-        end: new Date(gridEnd.getFullYear(), gridEnd.getMonth(), gridEnd.getDate(), 23, 59, 59, 999),
+        start: weekStart,
+        end: new Date(addDays(weekStart, 6).getFullYear(), addDays(weekStart, 6).getMonth(), addDays(weekStart, 6).getDate(), 23, 59, 59, 999),
       };
     }
     case 'agenda':
@@ -98,11 +108,11 @@ function computeDateRange(view: CalendarView, anchor: Date): DateRange {
 function loadStoredView(): CalendarView {
   try {
     const stored = localStorage.getItem(STORAGE_KEY_VIEW);
-    if (stored && ['week', 'day', 'month', 'agenda'].includes(stored)) {
+    if (stored && VALID_VIEWS.includes(stored as CalendarView)) {
       return stored as CalendarView;
     }
   } catch { /* ignore */ }
-  return 'week';
+  return 'timeline';
 }
 
 function loadStoredFilter(): EventFilter {
@@ -129,24 +139,36 @@ function loadStoredDate(): Date {
 export function useCalendarPage(): CalendarPageState {
   const [view, setViewRaw] = useState<CalendarView>(loadStoredView);
   const [filter, setFilterRaw] = useState<EventFilter>(loadStoredFilter);
+  const [insightFilter, setInsightFilterRaw] = useState<InsightFilter>(null);
   const [currentDate, setCurrentDateRaw] = useState<Date>(loadStoredDate);
+  const [selectedDay, setSelectedDayRaw] = useState<Date | null>(null);
   const [events, setEvents] = useState<CalendarEventDetail[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const fetchIdRef = useRef(0);
 
   const dateRange = useMemo(() => computeDateRange(view, currentDate), [view, currentDate]);
 
   const setView = useCallback((v: CalendarView) => {
     setViewRaw(v);
+    setInsightFilterRaw(null); // clear insight filter on view change
     try { localStorage.setItem(STORAGE_KEY_VIEW, v); } catch { /* ignore */ }
   }, []);
 
   const setFilter = useCallback((f: EventFilter) => {
     setFilterRaw(f);
     try { localStorage.setItem(STORAGE_KEY_FILTER, f); } catch { /* ignore */ }
+  }, []);
+
+  const setInsightFilter = useCallback((f: InsightFilter) => {
+    setInsightFilterRaw(f);
+  }, []);
+
+  const setSelectedDay = useCallback((d: Date | null) => {
+    setSelectedDayRaw(d);
   }, []);
 
   const classification = useEventClassification();
@@ -158,6 +180,7 @@ export function useCalendarPage(): CalendarPageState {
 
   const setCurrentDate = useCallback((d: Date) => {
     setCurrentDateRaw(d);
+    setSelectedDayRaw(null); // clear selected day on navigation
     try { localStorage.setItem(STORAGE_KEY_DATE, d.toISOString()); } catch { /* ignore */ }
   }, []);
 
@@ -165,19 +188,15 @@ export function useCalendarPage(): CalendarPageState {
 
   const goNext = useCallback(() => {
     setCurrentDate(
-      view === 'day' ? addDays(currentDate, 1) :
-      view === 'week' ? addDays(currentDate, 7) :
-      view === 'month' ? new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1) :
-      addDays(currentDate, 14)
+      view === 'agenda' ? addDays(currentDate, 14) :
+      new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() + 7)
     );
   }, [view, currentDate, setCurrentDate]);
 
   const goPrev = useCallback(() => {
     setCurrentDate(
-      view === 'day' ? addDays(currentDate, -1) :
-      view === 'week' ? addDays(currentDate, -7) :
-      view === 'month' ? new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1) :
-      addDays(currentDate, -14)
+      view === 'agenda' ? addDays(currentDate, -14) :
+      new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate() - 7)
     );
   }, [view, currentDate, setCurrentDate]);
 
@@ -198,6 +217,7 @@ export function useCalendarPage(): CalendarPageState {
       .then((res) => {
         if (id !== fetchIdRef.current) return;
         setEvents(res.events);
+        setLastFetchedAt(new Date());
       })
       .catch((err: Error) => {
         if (id !== fetchIdRef.current) return;
@@ -211,20 +231,25 @@ export function useCalendarPage(): CalendarPageState {
   return {
     view,
     filter,
+    insightFilter,
     currentDate,
+    selectedDay,
     events,
     filteredEvents,
     selectedEventId,
     loading,
     error,
     dateRange,
+    lastFetchedAt,
     goToday,
     goNext,
     goPrev,
     setView,
     setFilter,
+    setInsightFilter,
     selectEvent,
     setCurrentDate,
+    setSelectedDay,
     refresh,
     classification,
   };

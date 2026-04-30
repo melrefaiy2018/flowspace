@@ -26,54 +26,62 @@ export default function LabelFilter({ labels, activeLabel, onSelect }: Props) {
     .filter((l) => l.type === 'user')
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const TabItem = ({
+    id,
+    name,
+    unread,
+  }: {
+    id: string;
+    name: string;
+    unread?: number;
+  }) => {
+    const isActive = activeLabel === id;
+    return (
+      <button
+        key={id}
+        onClick={() => onSelect(id)}
+        className={[
+          'relative flex items-center gap-1.5 px-1 pb-3 text-[12px] font-medium transition-colors duration-100 cursor-pointer whitespace-nowrap shrink-0',
+          isActive
+            ? 'text-[var(--text)]'
+            : 'text-[var(--text-faint)] hover:text-[var(--text-dim)]',
+        ].join(' ')}
+      >
+        {name}
+        {unread !== undefined && unread > 0 && (
+          <span
+            className={`font-mono text-[9px] rounded-full px-[5px] py-px min-w-[16px] text-center leading-[15px] ${
+              isActive
+                ? 'bg-[var(--accent)]/15 text-[var(--accent)]'
+                : 'bg-white/[0.06] text-[var(--text-faint)]'
+            }`}
+          >
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+        {/* Active underline */}
+        {isActive && (
+          <span className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-[var(--accent)] rounded-full" />
+        )}
+      </button>
+    );
+  };
+
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex items-end gap-4 h-full">
       {systemLabels.map((label) => (
-        <button
-          key={label.id}
-          onClick={() => onSelect(label.id)}
-          className={`flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-            activeLabel === label.id
-              ? 'border-[var(--accent)]/30 bg-[var(--accent)]/12 text-[var(--accent)]'
-              : 'border-transparent bg-[var(--surface2)] text-[var(--text-dim)] hover:border-white/8 hover:bg-[var(--surface3)] hover:text-[var(--text)]'
-          }`}
-        >
-          {label.name}
-          {label.unread > 0 && (
-            <span className={`min-w-[16px] rounded-[999px] px-[4px] py-px text-center font-mono text-[9px] ${
-              activeLabel === label.id
-                ? 'bg-[var(--accent)]/18 text-[var(--accent)]'
-                : 'bg-black/20 text-[var(--text-faint)]'
-            }`}>
-              {label.unread > 99 ? '99+' : label.unread}
-            </span>
-          )}
-        </button>
+        <TabItem key={label.id} id={label.id} name={label.name} unread={label.unread} />
       ))}
       {userLabels.length > 0 && (
         <>
-          <div className="mx-1 h-4 w-px bg-[var(--border)] self-center" />
+          <div className="self-center h-3.5 w-px bg-[var(--border)] shrink-0" />
           {userLabels.map((label) => (
-            <button
+            <TabItem
               key={label.id}
-              onClick={() => onSelect(label.id)}
-              className={`flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                activeLabel === label.id
-                  ? 'border-[var(--accent)]/30 bg-[var(--accent)]/12 text-[var(--accent)]'
-                  : 'border-transparent bg-[var(--surface2)] text-[var(--text-dim)] hover:border-white/8 hover:bg-[var(--surface3)] hover:text-[var(--text)]'
-              }`}
-            >
-              {label.name}
-              {label.messagesUnread > 0 && (
-                <span className={`min-w-[16px] rounded-[999px] px-[4px] py-px text-center font-mono text-[9px] ${
-                  activeLabel === label.id
-                    ? 'bg-[var(--accent)]/18 text-[var(--accent)]'
-                    : 'bg-black/20 text-[var(--text-faint)]'
-                }`}>
-                  {label.messagesUnread > 99 ? '99+' : label.messagesUnread}
-                </span>
-              )}
-            </button>
+              id={label.id}
+              name={label.name}
+              unread={label.messagesUnread}
+            />
           ))}
         </>
       )}

@@ -13,6 +13,7 @@ export interface ToolResultInfo {
   toolName: string;
   args: Record<string, unknown>;
   result: string;
+  conversationId?: string;
 }
 
 function parseJsonSafe(text: string): unknown | null {
@@ -23,7 +24,7 @@ function parseJsonSafe(text: string): unknown | null {
   }
 }
 
-function extractTagsFromText(text: string): string[] {
+export function extractTagsFromText(text: string): string[] {
   const words = text.toLowerCase().split(/\s+/);
   const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']);
   return words
@@ -274,8 +275,39 @@ function extractArchiveEmailThreads(result: unknown, args: Record<string, unknow
   };
 }
 
+/** Return string values from args whose key ends in 'Id', '_id', or is a known ID key. */
+export function extractResourceIds(args: Record<string, unknown>): string[] {
+  const knownKeys = new Set(['id', 'fileId', 'spreadsheetId', 'docId', 'threadId', 'eventId']);
+  const ids: string[] = [];
+
+  for (const [key, value] of Object.entries(args)) {
+    const isKnown = knownKeys.has(key);
+    const endsWithId = key.endsWith('Id') || key.endsWith('_id');
+    if ((isKnown || endsWithId) && typeof value === 'string' && value.length > 0) {
+      ids.push(value);
+    }
+  }
+
+  return ids;
+}
+
+/** JSON-stringify args and truncate to maxLen, appending '...' if truncated. */
+export function summarizeArgs(args: Record<string, unknown>, maxLen: number): string {
+  const json = JSON.stringify(args);
+  if (json.length <= maxLen) return json;
+  return json.slice(0, maxLen) + '...';
+}
+
+function withConversationId(memories: ExtractedMemory[], conversationId?: string): ExtractedMemory[] {
+  if (!conversationId) return memories;
+  return memories.map((mem) => ({
+    ...mem,
+    source: { ...mem.source, conversationId },
+  }));
+}
+
 export function extractFromToolResult(info: ToolResultInfo): ExtractedMemory[] {
-  const { toolName, args, result } = info;
+  const { toolName, args, result, conversationId } = info;
 
   if (result.startsWith('Error:')) {
     return [];
@@ -288,7 +320,7 @@ export function extractFromToolResult(info: ToolResultInfo): ExtractedMemory[] {
 
   // search_drive returns multiple memories, handle separately
   if (toolName === 'search_drive') {
-    return extractSearchDrive(parsed, args);
+    return withConversationId(extractSearchDrive(parsed, args), conversationId);
   }
 
   let extracted: ExtractedMemory | null = null;
@@ -330,13 +362,24 @@ export function extractFromToolResult(info: ToolResultInfo): ExtractedMemory[] {
     case 'archive_email_threads':
       extracted = extractArchiveEmailThreads(parsed, args);
       break;
-    default:
-      return [];
+    default: {
+      const summary = summarizeArgs(args, 120);
+      const tags = extractTagsFromText(JSON.stringify(args));
+      extracted = {
+        category: 'fact',
+        content: `Used ${toolName}: ${summary}`,
+        tags: [toolName, ...tags],
+        metadata: { toolName, timestamp: new Date().toISOString() },
+        resourceIds: extractResourceIds(args),
+        source: { type: 'auto_extraction', toolName },
+      };
+      break;
+    }
   }
 
   if (!extracted) {
     return [];
   }
 
-  return [extracted];
+  return withConversationId([extracted], conversationId);
 }

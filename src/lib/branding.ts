@@ -1,1 +1,1 @@
-export const AGENT_NAME = 'Flux Agent';
+export const AGENT_NAME = 'FlowSpace Assistant';

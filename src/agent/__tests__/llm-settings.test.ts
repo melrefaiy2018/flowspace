@@ -149,6 +149,43 @@ describe('mergeSettings with custom providers', () => {
     expect(merged.providers.groq?.model).toBe('mixtral-8x7b-32768');
   });
 
+  it('preserves local providers with empty apiKey when key appears masked after round-trip', () => {
+    // Local providers (e.g. lmstudio) have apiKey: '' — the server masks '' to '••••'.
+    // On the next save the frontend sends back '••••'; mergeSettings must keep the provider
+    // rather than dropping it because the preserved key is an empty string (falsy but defined).
+    const existing: LLMSettings = {
+      activeProvider: 'lmstudio',
+      providers: {
+        lmstudio: {
+          provider: 'lmstudio',
+          apiKey: '',
+          model: 'local-model',
+          baseURL: 'http://localhost:1234/v1',
+        },
+      },
+    };
+    writeLLMSettings(existing);
+
+    // Simulate what the frontend sends after a reload: masked key
+    const incoming: LLMSettings = {
+      activeProvider: 'lmstudio',
+      providers: {
+        lmstudio: {
+          provider: 'lmstudio',
+          apiKey: '••••',
+          model: 'local-model',
+          baseURL: 'http://localhost:1234/v1',
+        },
+      },
+    };
+
+    const merged = mergeSettings(incoming);
+    expect(merged.providers.lmstudio).toBeDefined();
+    expect(merged.providers.lmstudio?.apiKey).toBe('');
+    expect(merged.providers.lmstudio?.model).toBe('local-model');
+    expect(merged.activeProvider).toBe('lmstudio');
+  });
+
   it('preserves masked keys for custom providers', () => {
     const existing: LLMSettings = {
       activeProvider: 'groq',

@@ -11,6 +11,7 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import type { DynamicToolDef, DynamicToolsFile } from './dynamic-tool-types.js';
+import { getDataDir } from '../lib/data-dir.js';
 
 const __filename_local = fileURLToPath(import.meta.url);
 const __dirname_local = path.dirname(__filename_local);
@@ -29,10 +30,7 @@ export interface FileIO {
 }
 
 function defaultFileIO(): FileIO {
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.FLOWSPACE_PRODUCTION === '1';
-  const dataDir = isProduction
-    ? path.join(os.homedir(), 'Library', 'Application Support', 'FlowSpace')
-    : path.resolve(__dirname_local, '..', '..');
+  const dataDir = getDataDir();
   const filePath = path.join(dataDir, '.dynamic-tools.json');
 
   return {

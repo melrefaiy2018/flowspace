@@ -1,6 +1,14 @@
 import type { GmailThreadDetail, GmailThreadMessage } from '../services/api';
 
-export type GmailAgentAction = 'ask_agent' | 'add_to_calendar' | 'draft_follow_up' | 'create_task';
+export type GmailAgentAction =
+  | 'ask_agent'
+  | 'add_to_calendar'
+  | 'draft_follow_up'
+  | 'create_task'
+  | 'pick_times'
+  | 'decline'
+  | 'delegate'
+  | 'save_to_drive';
 
 function stripHtml(html: string): string {
   return html
@@ -61,6 +69,14 @@ export function gmailAgentDisplayText(
       return `Draft a follow-up for "${subject}"`;
     case 'create_task':
       return `Create a task from "${subject}"`;
+    case 'pick_times':
+      return `Pick times for "${subject}"`;
+    case 'decline':
+      return `Decline "${subject}"`;
+    case 'delegate':
+      return `Delegate "${subject}"`;
+    case 'save_to_drive':
+      return `Save "${subject}" to Drive`;
     default:
       return `Help me with "${subject}"`;
   }
@@ -92,6 +108,14 @@ export function buildGmailAgentPrompt(
       return `${threadContext}\n\nPlease draft an appropriate follow-up reply for this Gmail thread. Preserve the likely tone and intent of the conversation, and mention any specific open questions or commitments that should be addressed.`;
     case 'create_task':
       return `${threadContext}\n\nPlease identify any actionable follow-up from this email thread and prepare a task if appropriate. Include the key action, any due date mentioned, and note if the thread does not contain a clear task yet.`;
+    case 'pick_times':
+      return `${threadContext}\n\nPlease find 3 available 30-minute slots in the user's calendar over the next 7 business days that could work for this meeting/conversation. Use the calendar tools to check availability. Present the slots clearly and offer to draft a reply proposing them.`;
+    case 'decline':
+      return `${threadContext}\n\nPlease draft a polite, brief decline reply appropriate to the tone of this thread. Preserve any existing context or commitments that should be addressed, and suggest alternatives only if the thread explicitly invites them.`;
+    case 'delegate':
+      return `${threadContext}\n\nPlease help the user delegate this thread to a teammate. Ask who should handle it if unclear, then draft a handoff message to the delegate that includes the relevant context, and an optional notification to the original sender that the user is looping someone in.`;
+    case 'save_to_drive':
+      return `${threadContext}\n\nPlease save this email thread as a Google Doc in Drive. Extract the key content (subject, participants, messages) into a readable format, suggest a filename, and confirm the Drive folder before creating the doc.`;
     default:
       return threadContext;
   }

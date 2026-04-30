@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
-import { Archive, Bot, Briefcase, Calendar, Check, CheckCircle2, ChevronRight, CircleDashed, ExternalLink, FileText, Mail, PencilLine, RefreshCw, RotateCcw, Sparkles, User, VolumeX, X } from 'lucide-react';
+import { Archive, Bot, Briefcase, Calendar, Check, CheckCircle2, ChevronRight, CircleDashed, ExternalLink, FileText, Mail, PencilLine, Plus, RefreshCw, RotateCcw, Sparkles, User, VolumeX, X } from 'lucide-react';
 import { useChatContext, type Message } from '../context/ChatContext';
 import type { AgendaEvent, ApprovalRequest, AssistantBlock, BulkActionPreviewItem, EmailDraftData, InboxActionType, ResultListItem, ToolEvent, TriageItem } from '../shared/chat';
 import EmailDraftCard from './EmailDraftCard';
@@ -626,75 +626,87 @@ function ApprovalCard({ approval, onApprove, onCancel }: {
   );
 
   return (
-    <div className="mt-3 rounded-[14px] border border-[var(--amber-border)] bg-[var(--amber-dim)]/40 p-4">
-      <div className="flex items-center gap-2">
-        <Sparkles size={14} className="text-[var(--amber)]" />
-        <div className="text-[13px] font-semibold text-[var(--text)]">{approval.title}</div>
-      </div>
-      <p className="mt-1 text-[12px] text-[var(--text-dim)] leading-relaxed">{approval.summary}</p>
-      {(approval.beforePreview || approval.afterPreview) && (
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-          {approval.beforePreview && (
-            <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg)] p-2.5">
-              <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-[var(--text-faint)] mb-1">Before</div>
-              {Object.entries(approval.beforePreview).map(([key, value]) => (
-                <div key={key} className="text-[11px] text-[var(--text-dim)]">
-                  <span className="text-[var(--text-faint)]">{key}:</span> {value}
-                </div>
-              ))}
+    <div className="mt-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-elevated)] overflow-hidden">
+      <div className="h-[3px] bg-gradient-to-r from-[var(--amber)] via-[var(--amber)]/70 to-transparent" />
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-[var(--radius-sm)] bg-[var(--amber-dim)] border border-[var(--amber-border)]/60 flex items-center justify-center shrink-0">
+              <Sparkles size={13} className="text-[var(--amber)]" />
             </div>
-          )}
-          {approval.afterPreview && (
-            <div className="rounded-[10px] border border-[var(--amber-border)] bg-[var(--bg)] p-2.5">
-              <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-[var(--amber)] mb-1">After</div>
-              {Object.entries(approval.afterPreview).map(([key, value]) => (
-                <div key={key} className="text-[11px] text-[var(--text)]">
-                  <span className="text-[var(--text-faint)]">{key}:</span> {value}
-                </div>
-              ))}
-            </div>
-          )}
+            <div className="text-[15px] font-semibold text-[var(--text)] tracking-[-0.01em]">{approval.title}</div>
+          </div>
+          <span className="inline-flex items-center h-5 px-2 rounded-full text-[10px] font-mono font-semibold uppercase tracking-[0.06em] bg-[var(--amber-dim)] border border-[var(--amber-border)]/50 text-[var(--amber)] shrink-0 mt-0.5">
+            Pending
+          </span>
         </div>
-      )}
-      <div className="mt-4 space-y-3">
-        {fields.map((field) => (
-          <label key={field.key} className="block">
-            <div className="mb-1 text-[10px] font-mono uppercase tracking-[0.06em] text-[var(--text-faint)]">
-              {field.label}
-            </div>
-            {field.multiline ? (
-              <textarea
-                value={field.value}
-                onChange={(event) => setFields((prev) => prev.map((entry) => entry.key === field.key ? { ...entry, value: event.target.value } : entry))}
-                rows={field.key === 'body' ? 6 : 3}
-                className="w-full rounded-[10px] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[12px] text-[var(--text)] outline-none focus:border-[var(--amber-border)]"
-                placeholder={field.placeholder}
-              />
-            ) : (
-              <input
-                value={field.value}
-                onChange={(event) => setFields((prev) => prev.map((entry) => entry.key === field.key ? { ...entry, value: event.target.value } : entry))}
-                className="w-full rounded-[10px] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[12px] text-[var(--text)] outline-none focus:border-[var(--amber-border)]"
-                placeholder={field.placeholder}
-              />
+        <p className="mt-2 text-[13px] text-[var(--text-dim)] leading-relaxed pl-[37px]">{approval.summary}</p>
+        {(approval.beforePreview || approval.afterPreview) && (
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {approval.beforePreview && (
+              <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] p-3">
+                <div className="text-[10px] font-mono font-semibold uppercase tracking-[0.1em] text-[var(--text-faint)] mb-2">Before</div>
+                {Object.entries(approval.beforePreview).map(([key, value]) => (
+                  <div key={key} className="mt-1 first:mt-0">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-[var(--text-faint)]">{key}</div>
+                    <div className="text-[12px] text-[var(--text-dim)] mt-0.5">{value}</div>
+                  </div>
+                ))}
+              </div>
             )}
-          </label>
-        ))}
-      </div>
-      <div className="mt-4 flex gap-2">
-        <button
-          onClick={() => onApprove({ ...approval, fields })}
-          disabled={isDisabled}
-          className="rounded-[10px] bg-[var(--amber)] px-3 py-2 text-[12px] font-semibold text-black disabled:opacity-50 cursor-pointer"
-        >
-          {approval.confirmLabel}
-        </button>
-        <button
-          onClick={onCancel}
-          className="rounded-[10px] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[12px] font-medium text-[var(--text-dim)] cursor-pointer"
-        >
-          Cancel
-        </button>
+            {approval.afterPreview && (
+              <div className="rounded-[var(--radius-md)] border border-[var(--accent-border)]/30 bg-[var(--accent-dim)]/10 p-3">
+                <div className="text-[10px] font-mono font-semibold uppercase tracking-[0.1em] text-[var(--accent)] mb-2">After</div>
+                {Object.entries(approval.afterPreview).map(([key, value]) => (
+                  <div key={key} className="mt-1 first:mt-0">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.06em] text-[var(--text-faint)]">{key}</div>
+                    <div className="text-[12px] text-[var(--text)] font-medium mt-0.5">{value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="mt-4 space-y-3">
+          {fields.map((field) => (
+            <label key={field.key} className="block">
+              <div className="mb-1.5 text-[10px] font-mono font-semibold uppercase tracking-[0.08em] text-[var(--text-faint)]">
+                {field.label}
+              </div>
+              {field.multiline ? (
+                <textarea
+                  value={field.value}
+                  onChange={(event) => setFields((prev) => prev.map((entry) => entry.key === field.key ? { ...entry, value: event.target.value } : entry))}
+                  rows={field.key === 'body' ? 6 : 3}
+                  className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[var(--accent)]/10 transition-colors duration-150 resize-none"
+                  placeholder={field.placeholder}
+                />
+              ) : (
+                <input
+                  value={field.value}
+                  onChange={(event) => setFields((prev) => prev.map((entry) => entry.key === field.key ? { ...entry, value: event.target.value } : entry))}
+                  className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-[13px] text-[var(--text)] outline-none focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[var(--accent)]/10 transition-colors duration-150"
+                  placeholder={field.placeholder}
+                />
+              )}
+            </label>
+          ))}
+        </div>
+        <div className="mt-5 flex gap-2.5">
+          <button
+            onClick={() => onApprove({ ...approval, fields })}
+            disabled={isDisabled}
+            className="flex-1 rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2.5 text-[13px] font-semibold text-black shadow-[0_2px_8px_rgba(34,197,94,0.3)] hover:brightness-110 active:scale-[0.98] disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-150 cursor-pointer"
+          >
+            {approval.confirmLabel}
+          </button>
+          <button
+            onClick={onCancel}
+            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-4 py-2.5 text-[13px] font-medium text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--surface2)] hover:border-[var(--border2)] active:scale-[0.98] transition-all duration-150 cursor-pointer"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -709,7 +721,7 @@ function SuggestionChips({ suggestions, preserveActiveView }: { suggestions: str
         <button
           key={text}
           onClick={() => void sendMessage(text, preserveActiveView ? { preserveActiveView: true } : undefined)}
-          className="px-3 py-1.5 rounded-full text-[12px] font-medium border border-[var(--accent)]/30 text-[var(--accent)] bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)] hover:border-[var(--accent)]/50 transition-all cursor-pointer"
+          className="px-3 py-1.5 rounded-full text-[12px] font-medium border border-[var(--accent-border)]/40 text-[var(--accent)] bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)] hover:border-[var(--accent-border)]/60 hover:shadow-[0_0_0_3px_rgba(34,197,94,0.06)] active:scale-[0.97] transition-all duration-150 cursor-pointer"
         >
           {text}
         </button>
@@ -718,7 +730,7 @@ function SuggestionChips({ suggestions, preserveActiveView }: { suggestions: str
   );
 }
 
-function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
+function MessageBubble({ msg, isLast, onSaveAsWorkflow }: { msg: Message; isLast?: boolean; onSaveAsWorkflow?: (toolNames: string[]) => void }) {
   const { activeView, approveAction, dismissApproval, editAssistantMessage } = useChatContext();
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -731,11 +743,11 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
 
   if (isUser) {
     return (
-      <div className="flex gap-3 flex-row-reverse mb-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-[var(--surface3)] border border-[var(--border)]">
-          <User size={14} className="text-[var(--text-dim)]" />
+      <div className="flex gap-2.5 flex-row-reverse mb-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-[var(--surface3)] border border-[var(--border2)]">
+          <User size={13} className="text-[var(--text-dim)]" />
         </div>
-        <div className="max-w-[82%] px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed bg-[var(--surface2)] border border-[var(--border)] text-[var(--text)] shadow-sm">
+        <div className="max-w-[80%] px-4 py-2.5 rounded-[var(--radius-lg)] text-[13px] leading-relaxed bg-[var(--surface2)] border border-[var(--border2)] text-[var(--text)] shadow-[var(--shadow-card)]">
           {msg.displayContent ?? msg.content}
         </div>
       </div>
@@ -748,8 +760,8 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
   const canEdit = !isStreaming && !!msg.content.trim();
 
   return (
-    <div className="flex gap-3 mb-5 animate-in fade-in slide-in-from-bottom-2 duration-400">
-      <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-tr from-[var(--accent-dim)] to-[var(--accent)]/20 border border-[var(--accent)]/30">
+    <div className="flex gap-3 mb-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="w-7 h-7 rounded-[var(--radius-sm)] shrink-0 flex items-center justify-center mt-0.5 bg-gradient-to-br from-[var(--accent-dim)] to-[var(--accent)]/10 border border-[var(--accent-border)]/40 shadow-[0_0_0_2px_rgba(34,197,94,0.06)]">
         <Bot size={13} className="text-[var(--accent)]" />
       </div>
       <div className="flex-1 min-w-0">
@@ -783,6 +795,7 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
 
           {/* Message content */}
           {(msg.content || (isStreaming && !hasToolEvents && !msg.approval && (msg.blocks ?? []).length === 0)) && (
+            <div className="rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border)] px-4 py-3.5 shadow-[var(--shadow-card)] hover:border-[var(--border2)] transition-colors duration-150">
             <div className="md-content text-[14px] leading-relaxed text-[var(--text)] prose prose-invert max-w-none">
               {msg.content && isEditing ? (
                 <div className="mt-1 rounded-[12px] border border-[var(--border)] bg-[var(--bg)] p-2.5">
@@ -829,6 +842,7 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
                 </div>
               ) : null}
             </div>
+            </div>
           )}
 
           {canEdit && !msg.approval && (
@@ -865,7 +879,21 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
 
           {/* Suggestion chips — only on the last completed assistant message */}
           {isLast && !isStreaming && msg.suggestions && msg.suggestions.length > 0 && (
-            <SuggestionChips suggestions={msg.suggestions} preserveActiveView={activeView !== 'chat' && activeView !== 'dashboard'} />
+            <SuggestionChips suggestions={msg.suggestions} preserveActiveView={activeView !== 'dashboard'} />
+          )}
+
+          {/* Save as workflow chip — shown on completed messages with ≥2 tool events */}
+          {isLast && !isStreaming && onSaveAsWorkflow && (msg.toolEvents?.length ?? 0) >= 2 && (
+            <div className="mt-2">
+              <button
+                onClick={() => onSaveAsWorkflow(msg.toolEvents?.map((e) => e.toolName) ?? [])}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-1.5 text-[11px] text-[var(--text-faint)] hover:text-[var(--text-dim)] hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition-all"
+                title="FlowSpace can learn from what it just did so you don't have to ask again."
+              >
+                <Plus size={11} />
+                Save as reusable workflow
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -875,11 +903,11 @@ function MessageBubble({ msg, isLast }: { msg: Message; isLast?: boolean }) {
 
 function TypingIndicator() {
   return (
-    <div className="flex gap-4 mb-8">
-      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[var(--surface3)] to-[var(--surface2)] shrink-0 flex items-center justify-center mt-1 border border-[var(--border)]">
-        <Bot size={14} className="text-[var(--text-faint)] animate-pulse" />
+    <div className="flex gap-3 mb-6">
+      <div className="w-7 h-7 rounded-[var(--radius-sm)] bg-gradient-to-br from-[var(--accent-dim)] to-[var(--accent)]/10 shrink-0 flex items-center justify-center mt-1 border border-[var(--accent-border)]/40">
+        <Bot size={13} className="text-[var(--accent)] animate-pulse" />
       </div>
-      <div className="flex gap-1.5 items-center px-4 py-3 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
+      <div className="flex gap-1.5 items-center px-4 py-3 rounded-[var(--radius-lg)] bg-[var(--surface)] border border-[var(--border)] shadow-[var(--shadow-card)]">
         {[0, 1, 2].map((i) => (
           <span
             key={i}
@@ -896,12 +924,13 @@ interface Props {
   title?: string;
   showCloseButton?: boolean;
   hideHeader?: boolean;
+  onSaveAsWorkflow?: (toolNames: string[]) => void;
 }
 
-export default function ChatThread({ title = AGENT_NAME, showCloseButton = true, hideHeader = false }: Props) {
+export default function ChatThread({ title = AGENT_NAME, showCloseButton = true, hideHeader = false, onSaveAsWorkflow }: Props) {
   const { activeView, messages, isLoading, newChat, closeChat, sendMessage } = useChatContext();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const preserveActiveView = activeView !== 'chat' && activeView !== 'dashboard';
+  const preserveActiveView = activeView !== 'dashboard';
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -910,41 +939,49 @@ export default function ChatThread({ title = AGENT_NAME, showCloseButton = true,
   const isEmpty = messages.length === 0 && !isLoading;
 
   return (
-    <div className="w-full px-4 flex flex-col flex-1 min-h-0 overflow-hidden relative">
+    <div className="w-full px-5 flex flex-col flex-1 min-h-0 overflow-hidden relative">
       {!hideHeader && (
-        <div className="flex items-center justify-between py-4 border-b border-[var(--border)] mb-4">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
-              <span className="text-[14px] font-bold text-[var(--text)] tracking-tight">
+        <div className="flex items-center justify-between pt-5 pb-4 border-b border-[var(--border)] mb-5 shrink-0">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex items-center justify-center w-2 h-2 shrink-0">
+                <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+                <div className="absolute w-2 h-2 rounded-full bg-[var(--accent)] animate-ping opacity-40" />
+              </div>
+              <span className="text-[16px] font-semibold text-[var(--text)] tracking-[-0.02em]">
                 {title}
               </span>
             </div>
-            <span className="text-[11px] text-[var(--text-faint)] mt-0.5">
-              {isLoading ? 'Processing your request...' : 'Ready to help with your workspace'}
-            </span>
+            <div className="flex items-center gap-1.5 pl-[18px]">
+              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--accent)]">
+                {isLoading ? 'Processing' : 'Ready'}
+              </span>
+              <span className="text-[11px] text-[var(--text-faint)]">
+                {isLoading ? '— working on your request' : '— write actions need your approval'}
+              </span>
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={newChat}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-medium text-[var(--text-dim)] hover:text-[var(--text)] hover:bg-[var(--surface2)] border border-transparent hover:border-[var(--border)] transition-all cursor-pointer"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-sm)] text-[12px] font-medium text-[var(--text-dim)] border border-[var(--border)] hover:text-[var(--text)] hover:bg-[var(--surface2)] hover:border-[var(--border2)] active:scale-[0.97] transition-all duration-150 cursor-pointer"
             >
-              <RotateCcw size={13} />
+              <RotateCcw size={12} />
               <span>New Chat</span>
             </button>
             {showCloseButton && (
               <button
                 onClick={closeChat}
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-[var(--text-faint)] hover:text-[var(--text-dim)] hover:bg-[var(--surface2)] transition-all cursor-pointer"
+                className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--text-faint)] border border-transparent hover:text-[var(--text-dim)] hover:bg-[var(--surface2)] hover:border-[var(--border)] active:scale-[0.97] transition-all duration-150 cursor-pointer"
               >
-                <X size={16} />
+                <X size={15} />
               </button>
             )}
           </div>
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto flex flex-col gap-3 pb-2">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto flex flex-col gap-2 pb-4 scroll-smooth">
         {isEmpty ? (
           <div className="flex flex-col gap-3 pt-2">
             <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -961,7 +998,7 @@ export default function ChatThread({ title = AGENT_NAME, showCloseButton = true,
                 <button
                   key={card.prompt}
                   onClick={() => void sendMessage(card.prompt, preserveActiveView ? { preserveActiveView: true } : undefined)}
-                  className="flex items-start gap-3 p-4 rounded-[var(--radius-md)] bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--border2)] hover:bg-[var(--surface2)] transition-all text-left cursor-pointer group"
+                  className="flex items-start gap-3 p-4 rounded-[var(--radius-md)] bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--border2)] hover:bg-[var(--surface2)] hover:shadow-[var(--shadow-card)] active:scale-[0.99] transition-all duration-150 text-left cursor-pointer group"
                 >
                   <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--accent-dim)] flex items-center justify-center shrink-0 group-hover:bg-[var(--accent)] group-hover:text-black transition-colors">
                     <card.icon size={15} className="text-[var(--accent)] group-hover:text-black transition-colors" />
@@ -977,7 +1014,7 @@ export default function ChatThread({ title = AGENT_NAME, showCloseButton = true,
         ) : (
           <div role="log" aria-live="polite" aria-relevant="additions">
             {messages.map((msg, index) => (
-              <MessageBubble key={msg.id} msg={msg} isLast={index === messages.length - 1} />
+              <MessageBubble key={msg.id} msg={msg} isLast={index === messages.length - 1} onSaveAsWorkflow={onSaveAsWorkflow} />
             ))}
           </div>
         )}
@@ -992,10 +1029,11 @@ export default function ChatThread({ title = AGENT_NAME, showCloseButton = true,
         .md-h1 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; color: var(--text); }
         .md-h2 { font-size: 14px; font-weight: 600; margin: 10px 0 4px; color: var(--text); }
         .md-h3 { font-size: 13px; font-weight: 600; margin: 8px 0 4px; color: var(--text-dim); }
-        .md-p { margin: 2px 0; }
+        .md-p { margin: 3px 0; }
         .md-hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
         .md-code {
-          background: var(--bg);
+          background: var(--surface2);
+          border: 1px solid var(--border);
           padding: 1px 5px;
           border-radius: 4px;
           font-size: 11px;
@@ -1004,7 +1042,8 @@ export default function ChatThread({ title = AGENT_NAME, showCloseButton = true,
         }
         .md-pre {
           background: var(--bg);
-          border-radius: var(--radius-sm);
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border);
           padding: 12px;
           margin: 8px 0;
           overflow-x: auto;

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { applyPersonaContentRules, buildAutomaticSuggestions, chunkText, toolLabel, updateToolEvent, verboseRunningLabel, verboseCompletedDetail } from '../chat';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { applyPersonaContentRules, buildAutomaticSuggestions, chunkText, toolLabel, updateToolEvent, verboseRunningLabel, verboseCompletedDetail } from '../chat-utils';
+import { validateApprovalFields } from '../approval-runtime';
 import type { ToolEvent } from '../../shared/chat';
 import type { Persona } from '../../lib/persona';
 
@@ -245,6 +246,116 @@ describe('applyPersonaContentRules', () => {
     };
     const content = 'Deadline: !!Mar 16, 2026!!';
     expect(applyPersonaContentRules(content, persona)).toBe(content);
+  });
+});
+
+describe('validateApprovalFields', () => {
+  it('returns invalid when a required field is empty string', () => {
+    const result = validateApprovalFields('send_email', { to: '', subject: 'hi', body: 'text' });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('to');
+  });
+
+  it('returns invalid when a required field is whitespace only', () => {
+    const result = validateApprovalFields('send_email', { to: '   ', subject: 'hi', body: 'text' });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('to');
+  });
+
+  it('returns invalid when a required field is missing', () => {
+    const result = validateApprovalFields('send_email', { subject: 'hi', body: 'text' });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('to');
+  });
+
+  it('returns valid when all required fields are present and non-empty', () => {
+    const result = validateApprovalFields('send_email', { to: 'a@b.com', subject: 'hi', body: 'text' });
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('returns valid for an unknown tool (no validation rules defined)', () => {
+    const result = validateApprovalFields('unknown_tool', {});
+    expect(result.valid).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('validates create_calendar_event required fields', () => {
+    const missingSummary = validateApprovalFields('create_calendar_event', { start_time: '2026-01-01T10:00:00Z' });
+    expect(missingSummary.valid).toBe(false);
+    expect(missingSummary.error).toContain('summary');
+
+    const missingStart = validateApprovalFields('create_calendar_event', { summary: 'Meeting' });
+    expect(missingStart.valid).toBe(false);
+    expect(missingStart.error).toContain('start_time');
+
+    const valid = validateApprovalFields('create_calendar_event', { summary: 'Meeting', start_time: '2026-01-01T10:00:00Z' });
+    expect(valid.valid).toBe(true);
+  });
+
+  it('validates create_task required fields', () => {
+    const missing = validateApprovalFields('create_task', {});
+    expect(missing.valid).toBe(false);
+    expect(missing.error).toContain('title');
+
+    const valid = validateApprovalFields('create_task', { title: 'Buy groceries' });
+    expect(valid.valid).toBe(true);
+  });
+
+  it('validates docs_write required fields', () => {
+    const missing = validateApprovalFields('docs_write', { content: 'hello' });
+    expect(missing.valid).toBe(false);
+    expect(missing.error).toContain('doc_id');
+
+    const valid = validateApprovalFields('docs_write', { doc_id: 'abc123', content: 'hello' });
+    expect(valid.valid).toBe(true);
+  });
+
+  it('validates sheets_create required fields', () => {
+    const missing = validateApprovalFields('sheets_create', {});
+    expect(missing.valid).toBe(false);
+    expect(missing.error).toContain('title');
+
+    const valid = validateApprovalFields('sheets_create', { title: 'Budget' });
+    expect(valid.valid).toBe(true);
+  });
+});
+
+// ── T078: truncateMessages wiring ────────────────────────────────────────────
+
+describe('truncateMessages integration', () => {
+  it('T078: truncateMessages is exported from context-assembler with correct MAX_CONTEXT_TOKENS', async () => {
+    // We import the exported constant and function from context-assembler
+    const { truncateMessages, MAX_CONTEXT_TOKENS } = await import('../context-assembler');
+
+    expect(typeof truncateMessages).toBe('function');
+    expect(MAX_CONTEXT_TOKENS).toBe(100_000);
+  });
+
+  it('T078: truncateMessages drops oldest messages when over budget', async () => {
+    const { truncateMessages } = await import('../context-assembler');
+
+    // Create a large set of messages that exceed a tiny budget
+    // Use string role to work with the generic overload
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: 'System prompt.' },
+      { role: 'user', content: 'First user message.' },
+      { role: 'assistant', content: 'First assistant response.' },
+      { role: 'user', content: 'Second user message.' },
+      { role: 'assistant', content: 'Second assistant response.' },
+      { role: 'user', content: 'Final user message.' },
+    ];
+
+    // Budget of 20 tokens (very tight) — should force truncation
+    const truncated = truncateMessages(messages, 20);
+
+    expect(truncated.length).toBeLessThan(messages.length);
+    // First message (system prompt) should always be preserved
+    expect(truncated[0]).toEqual(messages[0]);
+    // Last user message should be preserved
+    const lastUser = truncated[truncated.length - 1];
+    expect(lastUser.role).toBe('user');
+    expect(lastUser.content).toBe('Final user message.');
   });
 });
 

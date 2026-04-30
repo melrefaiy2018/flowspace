@@ -13,9 +13,8 @@ interface Props {
 }
 
 const VIEW_OPTIONS: { value: CalendarView; label: string }[] = [
-  { value: 'day', label: 'Day' },
-  { value: 'week', label: 'Week' },
-  { value: 'month', label: 'Month' },
+  { value: 'timeline', label: 'Timeline' },
+  { value: 'grid', label: 'Grid' },
   { value: 'agenda', label: 'Agenda' },
 ];
 

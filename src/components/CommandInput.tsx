@@ -13,7 +13,7 @@ export default function CommandInput({ variant = 'hero' }: Props) {
 
   const isReply = variant === 'reply';
   const isCompact = variant === 'compact';
-  const preserveActiveView = isReply && activeView !== 'chat' && activeView !== 'dashboard';
+  const preserveActiveView = isReply && activeView !== 'dashboard';
 
   useEffect(() => {
     if (isReply) registerInputRef(textareaRef.current);
@@ -50,16 +50,18 @@ export default function CommandInput({ variant = 'hero' }: Props) {
 
   if (isReply) {
     return (
-      <div className="px-2 py-1 shrink-0">
+      <div className="px-0 py-3 shrink-0 border-t border-[var(--border)]">
         <div
-          className="relative flex items-center border-2 rounded-2xl transition-all duration-300 shadow-sm"
+          className="relative flex items-center border rounded-[var(--radius-lg)] transition-all duration-150 shadow-[var(--shadow-card)]"
           style={{
-            borderColor: isFocused ? 'var(--accent)' : 'var(--border)',
+            borderColor: isFocused ? 'var(--accent-border)' : 'var(--border)',
             background: 'var(--surface)',
-            boxShadow: isFocused ? '0 0 0 4px var(--accent-glow)' : 'none',
+            boxShadow: isFocused
+              ? '0 0 0 3px rgba(34,197,94,0.12), var(--shadow-card)'
+              : 'var(--shadow-card)',
           }}
         >
-          <Sparkles size={16} className="ml-4 shrink-0 transition-colors" style={{ color: isFocused ? 'var(--accent)' : 'var(--text-faint)' }} />
+          <Sparkles size={15} className="ml-3.5 shrink-0 transition-colors duration-150" style={{ color: isFocused ? 'var(--accent)' : 'var(--text-faint)' }} />
           <textarea
             ref={textareaRef as any}
             value={input}
@@ -69,12 +71,12 @@ export default function CommandInput({ variant = 'hero' }: Props) {
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             rows={1}
-            className="flex-1 bg-transparent text-[var(--text)] px-3 py-2.5 text-[14px] resize-none outline-none placeholder:text-[var(--text-faint)] leading-relaxed"
+            className="flex-1 bg-transparent text-[var(--text)] px-3 py-2.5 text-[14px] resize-none outline-none placeholder:text-[var(--text-faint)]/70 leading-relaxed"
             style={{ fieldSizing: 'content' as any, maxHeight: '200px' }}
           />
           <div className="flex items-center gap-2 mr-2">
             {isLoading ? (
-              <button onClick={stopGeneration} aria-label="Stop generation" className="w-8 h-8 rounded-xl bg-[var(--error-dim)] text-[var(--error)] flex items-center justify-center shrink-0 hover:bg-[var(--error)] hover:text-black transition-all cursor-pointer">
+              <button onClick={stopGeneration} aria-label="Stop generation" className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--error-dim)] text-[var(--error)] flex items-center justify-center shrink-0 hover:bg-[var(--error)] hover:text-black active:scale-[0.94] transition-all duration-150 cursor-pointer">
                 <Square size={14} fill="currentColor" aria-hidden="true" />
               </button>
             ) : (
@@ -82,8 +84,8 @@ export default function CommandInput({ variant = 'hero' }: Props) {
                 onClick={handleSubmit}
                 disabled={!input.trim()}
                 aria-label="Send message"
-                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer ${
-                  input.trim() ? 'bg-[var(--accent)] text-black shadow-lg shadow-green-900/20' : 'bg-[var(--surface2)] text-[var(--text-faint)] opacity-50 cursor-not-allowed'
+                className={`w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 transition-all duration-150 cursor-pointer ${
+                  input.trim() ? 'bg-[var(--accent)] text-black shadow-[0_2px_8px_rgba(34,197,94,0.35)] hover:brightness-110 active:scale-[0.94]' : 'bg-[var(--surface2)] text-[var(--text-faint)] opacity-40 cursor-not-allowed'
                 }`}
               >
                 <Send size={14} strokeWidth={2.5} aria-hidden="true" />
@@ -91,8 +93,8 @@ export default function CommandInput({ variant = 'hero' }: Props) {
             )}
           </div>
         </div>
-        <div className="mt-1 px-2 text-[12px] text-[var(--text-faint)] flex items-center gap-2 opacity-70">
-          <div className="w-1 h-1 rounded-full bg-[var(--accent)]" />
+        <div className="mt-2 px-0.5 text-[11px] text-[var(--text-faint)]/60 flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]/50 shrink-0" />
           Write actions always require your approval.
         </div>
       </div>

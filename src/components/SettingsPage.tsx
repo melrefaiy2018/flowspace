@@ -5,22 +5,28 @@ import {
   RefreshCw,
   LogOut,
   ShieldCheck,
-  Sparkles,
   UserRound,
   Mail,
   BadgeCheck,
   PencilLine,
   RotateCcw,
+  Check,
+  Clock,
+  RadioTower,
+  HardDrive,
 } from 'lucide-react';
 import { api } from '../services/api';
 import type { ConnectedAccount, ProviderMetaResponse, LLMSettingsResponse } from '../services/api';
 import { useUpdateCheck } from '../hooks/useUpdateCheck';
 import PersonaSettings from './PersonaSettings';
 import LLMProviderSettings from './LLMProviderSettings';
+import SynthesisSettingsPanel from './synthesizer/SynthesisSettingsPanel';
+import ActivityLogView from './synthesizer/ActivityLogView';
 import { useAuth } from '../context/AuthContext';
 import type { SettingsSection } from './SettingsRail';
 import { useWorkspaceIdentity } from '../lib/workspaceIdentity';
 import { clearAllClientData } from '../lib/clear-client-data';
+import ThemeToggle from './ThemeToggle';
 
 interface SettingsPageProps {
   selectedSection: SettingsSection;
@@ -33,109 +39,40 @@ interface SettingsPageProps {
 }
 
 function panelClassName(extra?: string) {
-  return `rounded-[22px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] shadow-[0_20px_60px_rgba(0,0,0,0.24)] backdrop-blur-sm ${extra ?? ''}`;
+  return `rounded-[22px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_20px_60px_rgba(0,0,0,0.12)] backdrop-blur-sm ${extra ?? ''}`;
 }
 
-function SettingsHero({
-  selectedSection,
-  providers,
-  configuredProviders,
-  localProviders,
-  remoteProviders,
-  versionLoading,
-  recheckVersion,
-  userDisplayName,
+// Compact page-level header: title + one-line description + optional right-side action
+function PageHeader({
+  title,
+  description,
+  action,
 }: {
-  selectedSection: SettingsSection;
-  providers: ProviderMetaResponse[];
-  configuredProviders: ProviderMetaResponse[];
-  localProviders: number;
-  remoteProviders: number;
-  versionLoading: boolean;
-  recheckVersion: () => void;
-  userDisplayName: string;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
 }) {
-  const sectionConfig: Record<SettingsSection, { eyebrow: string; title: string; description: string }> = {
-    general: {
-      eyebrow: 'Control Plane',
-      title: 'AI settings',
-      description: 'Manage workspace controls for providers, account preferences, updates, and personalization.',
-    },
-    providers: {
-      eyebrow: 'Provider Control',
-      title: 'LLM provider management',
-      description: 'Configure credentials, select models, and control which provider receives live FlowSpace traffic.',
-    },
-    account: {
-      eyebrow: 'Identity',
-      title: `${userDisplayName} account`,
-      description: 'Review workspace identity, authenticated email, and the route currently serving your assistant.',
-    },
-    personalization: {
-      eyebrow: 'Assistant Behavior',
-      title: 'Persona and response style',
-      description: 'Adjust how FlowSpace speaks, structures its output, and adapts to your operating preferences.',
-    },
-    updates: {
-      eyebrow: 'Release Channel',
-      title: 'Version and update controls',
-      description: 'Inspect release status, verify whether an update is available, and review maintenance guidance.',
-    },
-  };
-  const current = sectionConfig[selectedSection];
-
   return (
-    <section className={`${panelClassName()} overflow-hidden px-5 py-5 md:px-6 md:py-6`}>
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-3xl">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--text-dim)]">
-            <Sparkles className="h-3.5 w-3.5 text-[var(--blue)]" />
-            {current.eyebrow}
-          </div>
-          <h1 className="text-[28px] font-semibold tracking-[-0.045em] text-white md:text-[34px]">
-            {current.title}
-          </h1>
-          <p className="mt-3 max-w-2xl text-[14px] leading-7 text-[var(--text-dim)]">
-            {current.description}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-          <button
-            onClick={recheckVersion}
-            disabled={versionLoading}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[12px] font-medium text-[var(--text-dim)] transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshCw size={13} className={versionLoading ? 'animate-spin' : ''} />
-            Check updates
-          </button>
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/20 bg-[var(--accent)]/8 px-4 py-2.5 text-[12px] font-medium text-[var(--text)]">
-            <ShieldCheck size={13} className="text-[var(--accent)]" />
-            Local credential storage
-          </div>
-        </div>
+    <div className="flex items-start justify-between gap-4 pb-1">
+      <div>
+        <h1 className="text-[19px] font-semibold tracking-[-0.03em] text-[var(--text)]">{title}</h1>
+        <p className="mt-0.5 text-[12px] leading-5 text-[var(--text-faint)]">{description}</p>
       </div>
+      {action && <div className="shrink-0">{action}</div>}
+    </div>
+  );
+}
 
-      {(selectedSection === 'general' || selectedSection === 'providers') && (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: 'Providers', value: providers.length, tone: 'text-white' },
-            { label: 'Configured', value: configuredProviders.length, tone: 'text-[var(--accent)]' },
-            { label: 'Remote', value: remoteProviders, tone: 'text-[var(--blue)]' },
-            { label: 'Local', value: localProviders, tone: 'text-[var(--text-dim)]' },
-          ].map((item) => (
-            <div key={item.label} className="rounded-[18px] border border-white/8 bg-black/20 px-4 py-3.5">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">
-                {item.label}
-              </div>
-              <div className={`mt-2 text-[28px] font-semibold tracking-[-0.05em] ${item.tone}`}>
-                {item.value}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+// Structured metadata cell: a labeled value pair used in status strips
+function MetaCell({ label, value, icon: Icon }: { label: string; value: string; icon?: React.ElementType }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">{label}</span>
+      <div className="flex items-center gap-1.5">
+        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />}
+        <span className="truncate text-[13px] font-medium text-[var(--text)]">{value}</span>
+      </div>
+    </div>
   );
 }
 
@@ -156,6 +93,9 @@ export default function SettingsPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [identityDraft, setIdentityDraft] = useState('');
   const [isEditingIdentity, setIsEditingIdentity] = useState(false);
+  const [identitySaved, setIdentitySaved] = useState(false);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [showActivityLog, setShowActivityLog] = useState(false);
   const { versionInfo, loading: versionLoading, recheck: recheckVersion } = useUpdateCheck();
   const fallbackIdentity = user?.user_metadata?.name ?? user?.email?.split('@')[0] ?? 'FlowSpace user';
   const {
@@ -176,7 +116,6 @@ export default function SettingsPage({
         api.getLLMProviders(),
         api.getLLMSettings(),
       ]);
-
       setProviders(providerRes.providers);
       setSettings(settingsRes.settings);
     } catch (err: any) {
@@ -187,13 +126,13 @@ export default function SettingsPage({
     }
   }, []);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => { setIdentityDraft(identityName); }, [identityName]);
 
-  useEffect(() => {
-    setIdentityDraft(identityName);
-  }, [identityName]);
+  const handleCheckUpdates = useCallback(() => {
+    recheckVersion();
+    setLastChecked(new Date());
+  }, [recheckVersion]);
 
   const handleIdentitySave = useCallback(() => {
     const trimmed = identityDraft.trim();
@@ -201,6 +140,8 @@ export default function SettingsPage({
     saveIdentity(nextValue);
     setIdentityDraft(nextValue);
     setIsEditingIdentity(false);
+    setIdentitySaved(true);
+    setTimeout(() => setIdentitySaved(false), 2000);
   }, [fallbackIdentity, identityDraft, saveIdentity]);
 
   const handleIdentityReset = useCallback(() => {
@@ -228,272 +169,338 @@ export default function SettingsPage({
   }
 
   const activeProvider = settings?.activeProvider;
-  const configuredProviders = providers.filter((provider) => Boolean(settings?.providers[provider.id]));
-  const localProviders = providers.filter((provider) => provider.id === 'lmstudio' || provider.id === 'claude-code').length;
-  const remoteProviders = providers.length - localProviders;
-  const activeProviderMeta = providers.find((provider) => provider.id === activeProvider) ?? null;
+  const configuredProviders = providers.filter((p) => Boolean(settings?.providers[p.id]));
+  const activeProviderMeta = providers.find((p) => p.id === activeProvider) ?? null;
+  const activeModel = activeProviderMeta ? (settings?.providers[activeProviderMeta.id]?.model ?? 'Default model') : null;
   const userDisplayName = identityName || user?.user_metadata?.name || user?.email?.split('@')[0] || 'FlowSpace user';
 
+  // ── Helpers ────────────────────────────────────────────────────────────
+  function formatLastChecked(d: Date | null) {
+    if (!d) return 'Never';
+    const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins === 1) return '1 minute ago';
+    return `${mins} minutes ago`;
+  }
+
+  // ── General ────────────────────────────────────────────────────────────
+  const renderGeneralSection = () => (
+    <div className="space-y-4">
+      <PageHeader
+        title="Settings"
+        description="Workspace controls for FlowSpace."
+      />
+
+      {/* Appearance */}
+      <div className={`${panelClassName()} px-5 py-4`}>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-faint)] mb-3">
+          Appearance
+        </div>
+        <ThemeToggle variant="row" />
+      </div>
+
+      {/* 4-cell status strip */}
+      <div className={`${panelClassName()} px-5 py-4`}>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          <MetaCell label="Account" value={userDisplayName} />
+          <MetaCell
+            label="Active provider"
+            value={activeProviderMeta ? activeProviderMeta.name : 'None'}
+          />
+          <MetaCell
+            label="Configured"
+            value={`${configuredProviders.length} of ${providers.length}`}
+          />
+          <MetaCell
+            label="Credentials"
+            value="Local"
+            icon={ShieldCheck}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {([
+          { id: 'providers', title: 'LLM Providers', desc: 'Models, credentials, active routing' },
+          { id: 'account', title: 'User Account', desc: 'Identity, email, session actions' },
+          { id: 'personalization', title: 'Personalization', desc: 'Persona, tone, custom instructions' },
+          { id: 'updates', title: 'Updates', desc: 'Version status and release channel' },
+        ] as { id: SettingsSection; title: string; desc: string }[]).map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onSectionChange(item.id)}
+            className="rounded-[18px] border border-[var(--border)] bg-[var(--surface2)] px-4 py-3.5 text-left transition hover:border-[var(--border2)] hover:bg-[var(--surface-hover)]"
+          >
+            <div className="text-[13px] font-semibold text-[var(--text)]">{item.title}</div>
+            <div className="mt-0.5 text-[12px] text-[var(--text-faint)]">{item.desc}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── Account ────────────────────────────────────────────────────────────
   const renderAccountSection = () => (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <section className={`${panelClassName()} p-6`}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">Account</div>
-        <div className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white">Workspace identity</div>
-        <p className="mt-2 text-[13px] leading-6 text-[var(--text-dim)]">
-          Rename how this workspace appears in Settings without changing your authenticated email.
-        </p>
-        <div className="mt-5 rounded-[18px] border border-white/8 bg-black/20 p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">Display name</div>
-          <div className="mt-3 flex flex-col gap-3">
-            <div className="relative">
+    <div className="space-y-4">
+      <PageHeader
+        title="User Account"
+        description="Workspace identity, signed-in account, and connected Google accounts."
+      />
+
+      {/* Inline status strip under the title */}
+      {(activeProviderMeta || true) && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-[16px] border border-[var(--border)] bg-[var(--surface2)] px-4 py-3">
+          <div className="flex items-center gap-1.5 text-[12px]">
+            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+            <span className="text-[var(--text-faint)]">Route:</span>
+            <span className="font-medium text-[var(--text-dim)]">
+              {activeProviderMeta ? `${activeProviderMeta.name}${activeModel ? ` · ${activeModel}` : ''}` : 'No active provider'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[12px]">
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+            <span className="text-[var(--text-faint)]">Credentials:</span>
+            <span className="font-medium text-[var(--text-dim)]">Stored locally</span>
+          </div>
+        </div>
+      )}
+
+      {/* Main content — single dominant column */}
+      <div className="space-y-3">
+        {/* Workspace identity */}
+        <section className={`${panelClassName()} p-5`}>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-faint)]">
+            Workspace identity
+          </div>
+          <p className="mt-1.5 text-[12px] leading-5 text-[var(--text-dim)]">
+            Rename how this workspace appears without changing your authenticated email.
+          </p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
               <input
                 value={identityDraft}
                 onChange={(e) => setIdentityDraft(e.target.value)}
                 onFocus={() => setIsEditingIdentity(true)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleIdentitySave();
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    setIdentityDraft(identityName);
-                    setIsEditingIdentity(false);
-                  }
+                  if (e.key === 'Enter') { e.preventDefault(); handleIdentitySave(); }
+                  else if (e.key === 'Escape') { e.preventDefault(); setIdentityDraft(identityName); setIsEditingIdentity(false); }
                 }}
                 placeholder="Enter workspace identity"
-                className="w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-4 py-3 pr-11 text-[14px] text-white outline-none transition placeholder:text-[var(--text-faint)] focus:border-[var(--blue)]/45"
+                className="w-full rounded-[14px] border border-[var(--border)] bg-[var(--surface2)] px-4 py-2.5 pr-10 text-[14px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-faint)] focus:border-[var(--blue)]"
               />
-              <PencilLine className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
+              <PencilLine className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-faint)]" />
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 onClick={handleIdentitySave}
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--blue)]/30 bg-[linear-gradient(180deg,rgba(59,130,246,0.96),rgba(37,99,235,0.96))] px-4 py-2.5 text-[13px] font-semibold text-white transition hover:brightness-110"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--blue)]/30 bg-[linear-gradient(180deg,rgba(59,130,246,0.96),rgba(37,99,235,0.96))] px-4 py-2 text-[12px] font-semibold text-white transition hover:brightness-110"
               >
-                Save identity
+                {identitySaved ? <><Check size={12} />Saved</> : 'Save'}
               </button>
               <button
                 onClick={handleIdentityReset}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[13px] font-medium text-[var(--text-dim)] transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface2)] px-3.5 py-2 text-[12px] font-medium text-[var(--text-dim)] transition hover:border-[var(--border2)] hover:text-[var(--text)]"
+                title="Reset to default"
               >
-                <RotateCcw size={13} />
-                Reset to default
+                <RotateCcw size={12} />
               </button>
               {isEditingIdentity && (
                 <button
-                  onClick={() => {
-                    setIdentityDraft(identityName);
-                    setIsEditingIdentity(false);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-2.5 text-[13px] font-medium text-[var(--text-dim)] transition hover:border-white/20 hover:bg-white/[0.04] hover:text-white"
+                  onClick={() => { setIdentityDraft(identityName); setIsEditingIdentity(false); }}
+                  className="text-[12px] text-[var(--text-faint)] transition hover:text-[var(--text-dim)]"
                 >
                   Cancel
                 </button>
               )}
             </div>
           </div>
-        </div>
-        <div className="mt-6 flex items-start gap-4 rounded-[20px] border border-white/8 bg-black/20 p-5">
-          <div className="flex h-14 w-14 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.04] text-white">
-            <UserRound className="h-6 w-6" />
+        </section>
+
+        {/* Signed-in account */}
+        <section className={`${panelClassName()} p-5`}>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-faint)]">
+            Signed-in account
           </div>
-          <div className="min-w-0">
-            <div className="text-[20px] font-semibold text-white">{userDisplayName}</div>
-            <div className="mt-2 flex items-center gap-2 text-[13px] text-[var(--text-dim)]">
-              <Mail className="h-4 w-4" />
-              <span className="truncate">{user?.email ?? 'Unknown user'}</span>
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border border-[var(--border)] bg-[var(--surface2)]">
+              <UserRound className="h-4.5 w-4.5 text-[var(--text-dim)]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[14px] font-semibold text-[var(--text)]">{userDisplayName}</div>
+              <div className="flex items-center gap-1 text-[12px] text-[var(--text-dim)]">
+                <Mail className="h-3 w-3 shrink-0" />
+                <span className="truncate">{user?.email ?? 'Unknown'}</span>
+              </div>
             </div>
             <button
               onClick={handleLogout}
-              className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[13px] font-medium text-[var(--text-dim)] transition hover:border-white/18 hover:bg-white/[0.06] hover:text-white"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface2)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-dim)] transition hover:border-[var(--border2)] hover:text-[var(--text)]"
             >
-              <LogOut size={13} />
+              <LogOut size={11} />
               Sign out
             </button>
           </div>
-        </div>
-        <div className="mt-6 rounded-[20px] border border-white/8 bg-black/20 p-5">
+        </section>
+
+        {/* Connected accounts */}
+        <section className={`${panelClassName()} p-5`}>
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-faint)]">Connected Google accounts</div>
-              <div className="mt-1 text-[13px] text-[var(--text-dim)]">Switch the active workspace account or add another slot.</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-faint)]">
+              Connected Google accounts
             </div>
             {onAddAccount && (
               <button
                 onClick={onAddAccount}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-[12px] font-medium text-white transition hover:border-white/20 hover:bg-white/[0.06]"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface2)] px-3 py-1.5 text-[11px] font-medium text-[var(--text)] transition hover:border-[var(--border2)] hover:bg-[var(--surface-hover)]"
               >
                 Add account
               </button>
             )}
           </div>
-          <div className="mt-4 space-y-2">
-            {accounts.map((account) => {
-              const isActive = account.id === activeAccountId;
-              return (
-                <div key={account.id} className={`flex items-center gap-3 rounded-[16px] border px-4 py-3 ${isActive ? 'border-[var(--accent)]/25 bg-[var(--accent)]/10' : 'border-white/8 bg-white/[0.02]'}`}>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[14px] font-semibold text-white">{account.name || account.email}</div>
-                    <div className="truncate text-[12px] text-[var(--text-dim)]">{account.email}</div>
+          <p className="mt-1 text-[12px] text-[var(--text-faint)]">
+            Switch the active workspace or add another account.
+          </p>
+          {accounts.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {accounts.map((account) => {
+                const isActive = account.id === activeAccountId;
+                return (
+                  <div
+                    key={account.id}
+                    className={`flex items-center gap-3 rounded-[14px] border px-3.5 py-2.5 ${
+                      isActive ? 'border-[var(--accent)]/25 bg-[var(--accent)]/10' : 'border-[var(--border)] bg-[var(--surface2)]'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-semibold text-[var(--text)]">{account.name || account.email}</div>
+                      <div className="truncate text-[11px] text-[var(--text-dim)]">{account.email}</div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {onSwitchAccount && (
+                        <button
+                          onClick={() => onSwitchAccount(account.id)}
+                          disabled={isActive}
+                          className="rounded-full border border-[var(--border)] bg-[var(--surface2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-dim)] transition hover:border-[var(--border2)] hover:text-[var(--text)] disabled:opacity-50"
+                        >
+                          {isActive ? 'Active' : 'Switch'}
+                        </button>
+                      )}
+                      {onRemoveAccount && (
+                        <button
+                          onClick={() => onRemoveAccount(account.id)}
+                          className="rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-dim)] transition hover:border-[var(--error)]/30 hover:text-[var(--error)]"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {onSwitchAccount && (
-                    <button
-                      onClick={() => onSwitchAccount(account.id)}
-                      disabled={isActive}
-                      className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-medium text-[var(--text-dim)] transition hover:border-white/20 hover:text-white disabled:opacity-50"
-                    >
-                      {isActive ? 'Active' : 'Switch'}
-                    </button>
-                  )}
-                  {onRemoveAccount && (
-                    <button
-                      onClick={() => onRemoveAccount(account.id)}
-                      className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-medium text-[var(--text-dim)] transition hover:border-[var(--error)]/30 hover:text-[var(--error)]"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-6">
-        <div className={`${panelClassName()} p-5`}>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">Active routing</div>
-          <div className="mt-3 flex items-center gap-3">
-            <div className="rounded-[14px] border border-[var(--accent)]/20 bg-[var(--accent)]/10 p-2.5">
-              <BadgeCheck className="h-4.5 w-4.5 text-[var(--accent)]" />
+                );
+              })}
             </div>
-            <div>
-              <div className="text-[15px] font-semibold text-white">{activeProviderMeta?.name ?? 'No active provider'}</div>
-              <div className="mt-1 text-[12px] text-[var(--text-dim)]">
-                {activeProviderMeta ? settings?.providers[activeProviderMeta.id]?.model ?? 'Default model' : 'Activate a provider to route requests.'}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className={`${panelClassName()} p-5`}>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">Security</div>
-          <p className="mt-3 text-[13px] leading-6 text-[var(--text-dim)]">
-            FlowSpace stores provider settings locally and uses your authenticated workspace identity for app access only.
-          </p>
-        </div>
-      </section>
+          ) : (
+            <p className="mt-3 text-[12px] text-[var(--text-faint)]">No additional accounts connected.</p>
+          )}
+        </section>
+      </div>
     </div>
   );
 
+  // ── Personalization ────────────────────────────────────────────────────
   const renderPersonalizationSection = () => (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <section className={`${panelClassName()} p-5 md:p-6`}>
-        <div className="mb-5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">Personalization</div>
-          <div className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-white">Assistant profile</div>
-          <p className="mt-2 text-[13px] leading-6 text-[var(--text-dim)]">
-            Tune tone, formatting, and role guidance for how FlowSpace communicates with you.
-          </p>
-        </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="Personalization"
+        description="Tune how FlowSpace communicates — tone, format, and role guidance."
+      />
+      <div className={`${panelClassName()} p-5 md:p-6`}>
         <PersonaSettings />
-      </section>
-
-      <section className={`${panelClassName()} p-5`}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">What changes here</div>
-        <ul className="mt-4 space-y-3 text-[12px] leading-6 text-[var(--text-dim)]">
-          <li>Tone changes affect response depth and directness.</li>
-          <li>Format style shapes whether replies lean on bullets, structure, or prose.</li>
-          <li>Custom instructions apply on top of the selected preset.</li>
-        </ul>
-      </section>
+      </div>
     </div>
   );
 
-  const renderUpdatesSection = () => (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <section className={`${panelClassName()} p-5 md:p-6`}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">Release channel</div>
-        <div className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-white">FlowSpace {__APP_VERSION__}</div>
-        {versionInfo?.updateAvailable ? (
-          <div className="mt-5 rounded-[18px] border border-[var(--accent)]/20 bg-[var(--accent-dim)]/45 p-4">
+  // ── Updates ────────────────────────────────────────────────────────────
+  const renderUpdatesSection = () => {
+    const updateStatus = versionInfo?.updateAvailable
+      ? 'Update available'
+      : versionInfo && !versionLoading
+      ? 'Up to date'
+      : 'Unknown';
+
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Updates"
+          description="Release channel and version status."
+          action={
+            <button
+              onClick={handleCheckUpdates}
+              disabled={versionLoading}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface2)] px-3.5 py-2 text-[12px] font-medium text-[var(--text-dim)] transition hover:border-[var(--border2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={versionLoading ? 'animate-spin' : ''} />
+              Check now
+            </button>
+          }
+        />
+
+        {/* System status strip */}
+        <div className={`${panelClassName()} px-5 py-4`}>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+            <MetaCell label="Version" value={__APP_VERSION__} />
+            <MetaCell label="Release channel" value="Stable" icon={RadioTower} />
+            <MetaCell label="Last checked" value={formatLastChecked(lastChecked)} icon={Clock} />
+            <MetaCell
+              label="Status"
+              value={updateStatus}
+              icon={versionInfo?.updateAvailable ? ArrowUpCircle : undefined}
+            />
+          </div>
+        </div>
+
+        {versionInfo?.updateAvailable && (
+          <div className={`${panelClassName()} p-5`}>
             <div className="flex items-center gap-2 text-[13px] font-semibold text-[var(--accent)]">
               <ArrowUpCircle size={15} />
               Version {versionInfo.latest} available
             </div>
-            <p className="mt-2 text-[12px] leading-6 text-[var(--text-dim)]">
-              Update from the desktop shell with <code className="rounded bg-black/30 px-1.5 py-0.5 text-white">npx flowspace-ai</code>.
+            <p className="mt-2 text-[12px] leading-5 text-[var(--text-dim)]">
+              Update with{' '}
+              <code className="rounded bg-[var(--surface3)] px-1.5 py-0.5 text-[var(--text)]">npx flowspace-ai</code>
             </p>
             {versionInfo.releaseUrl && (
-              <a href={versionInfo.releaseUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-[12px] font-medium text-[var(--accent)] transition hover:opacity-80">
+              <a
+                href={versionInfo.releaseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex text-[12px] font-medium text-[var(--accent)] transition hover:opacity-80"
+              >
                 View release notes
               </a>
             )}
           </div>
-        ) : versionInfo && !versionLoading ? (
-          <p className="mt-5 text-[13px] text-[var(--text-dim)]">You are on the latest version.</p>
-        ) : (
-          <p className="mt-5 text-[13px] text-[var(--text-dim)]">Use the refresh action to verify the latest release.</p>
         )}
-      </section>
 
-      <section className={`${panelClassName()} p-5`}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">Maintenance</div>
-        <ul className="mt-4 space-y-3 text-[12px] leading-6 text-[var(--text-dim)]">
-          <li>Check updates before rotating providers or changing default routes.</li>
-          <li>Review release notes when model defaults or auth behavior change.</li>
-          <li>Keep local runtime integrations current with your installed tooling.</li>
-        </ul>
-      </section>
-    </div>
-  );
-
-  const renderGeneralSection = () => (
-    <div className="space-y-6">
-      <section className={`${panelClassName()} p-5 md:p-6`}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--text-faint)]">General</div>
-        <div className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-white">Settings overview</div>
-        <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[var(--text-dim)]">
-          Choose a category to manage a specific part of FlowSpace. Each section below opens a focused workspace with only its related controls.
-        </p>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          <button onClick={() => onSectionChange('providers')} className="rounded-[18px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-white/16 hover:bg-white/[0.04]">
-            <div className="text-[14px] font-semibold text-white">LLM Providers</div>
-            <div className="mt-1 text-[12px] text-[var(--text-dim)]">Models, credentials, active routing, endpoint controls</div>
-          </button>
-          <button onClick={() => onSectionChange('account')} className="rounded-[18px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-white/16 hover:bg-white/[0.04]">
-            <div className="text-[14px] font-semibold text-white">User Account</div>
-            <div className="mt-1 text-[12px] text-[var(--text-dim)]">Identity, email, session actions</div>
-          </button>
-          <button onClick={() => onSectionChange('personalization')} className="rounded-[18px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-white/16 hover:bg-white/[0.04]">
-            <div className="text-[14px] font-semibold text-white">Personalization</div>
-            <div className="mt-1 text-[12px] text-[var(--text-dim)]">Persona, tone, formatting, custom instructions</div>
-          </button>
-          <button onClick={() => onSectionChange('updates')} className="rounded-[18px] border border-white/8 bg-black/20 p-4 text-left transition hover:border-white/16 hover:bg-white/[0.04]">
-            <div className="text-[14px] font-semibold text-white">Updates</div>
-            <div className="mt-1 text-[12px] text-[var(--text-dim)]">Version status and release channel checks</div>
-          </button>
+        <div className={`${panelClassName()} p-5`}>
+          <div className="mb-3 flex items-center gap-2">
+            <HardDrive className="h-3.5 w-3.5 text-[var(--text-faint)]" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-faint)]">Maintenance</span>
+          </div>
+          <ul className="space-y-2 text-[12px] leading-5 text-[var(--text-dim)]">
+            <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--border2)]" />Check updates before rotating providers or changing default routes.</li>
+            <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--border2)]" />Review release notes when model defaults or auth behavior changes.</li>
+            <li className="flex gap-2"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--border2)]" />Keep local runtime integrations current with your installed tooling.</li>
+          </ul>
         </div>
-      </section>
-    </div>
-  );
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-full bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_22%),radial-gradient(circle_at_top_right,rgba(34,197,94,0.1),transparent_18%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]">
-      <div className="mx-auto flex max-w-[1420px] flex-col gap-6 px-4 py-5 md:px-6 md:py-6">
-        <SettingsHero
-          selectedSection={selectedSection}
-          providers={providers}
-          configuredProviders={configuredProviders}
-          localProviders={localProviders}
-          remoteProviders={remoteProviders}
-          versionLoading={versionLoading}
-          recheckVersion={recheckVersion}
-          userDisplayName={userDisplayName}
-        />
-
+    <div className="min-h-full bg-[var(--bg)]">
+      <div className="mx-auto flex max-w-[1420px] flex-col gap-4 px-4 py-5 md:px-6 md:py-5">
         {saveMessage && (
-          <div className={`rounded-[18px] border px-4 py-3 text-sm ${
+          <div className={`rounded-[16px] border px-4 py-2.5 text-[13px] ${
             saveMessage.startsWith('Error')
               ? 'border-[var(--red)]/20 bg-[var(--red-dim)]/40 text-red-200'
               : 'border-[var(--accent)]/20 bg-[var(--accent-dim)]/45 text-green-200'
@@ -504,17 +511,36 @@ export default function SettingsPage({
 
         {selectedSection === 'general' && renderGeneralSection()}
         {selectedSection === 'providers' && (
-          <LLMProviderSettings
-            providers={providers}
-            settings={settings}
-            onSettingsChange={setSettings}
-            onProvidersChange={setProviders}
-            saveMessage={saveMessage}
-            onSaveMessage={setSaveMessage}
-          />
+          <>
+            <PageHeader
+              title="LLM Providers"
+              description="Configure credentials, select models, and set the active provider."
+            />
+            <LLMProviderSettings
+              providers={providers}
+              settings={settings}
+              onSettingsChange={setSettings}
+              onProvidersChange={setProviders}
+              saveMessage={saveMessage}
+              onSaveMessage={setSaveMessage}
+            />
+          </>
         )}
         {selectedSection === 'account' && renderAccountSection()}
         {selectedSection === 'personalization' && renderPersonalizationSection()}
+        {selectedSection === 'suggestions' && (
+          <>
+            <PageHeader
+              title="Workflow Suggestions"
+              description="Opt in to surface saved-workflow suggestions from your repeated tool usage."
+            />
+            {showActivityLog ? (
+              <ActivityLogView onBack={() => setShowActivityLog(false)} />
+            ) : (
+              <SynthesisSettingsPanel onOpenActivityLog={() => setShowActivityLog(true)} />
+            )}
+          </>
+        )}
         {selectedSection === 'updates' && renderUpdatesSection()}
       </div>
     </div>

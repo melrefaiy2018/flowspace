@@ -27,15 +27,17 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync, spawn, execFileSync } from 'node:child_process';
 import net from 'node:net';
+import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 // ── Constants ────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Data dir — matches the server's production path so settings saved in the UI
-// persist across CLI restarts. Migrates from legacy ~/.flowspace on first run.
-const FLOWSPACE_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'FlowSpace');
-const LEGACY_FLOWSPACE_DIR = path.join(os.homedir(), '.flowspace');
+// Matches server.ts production DATA_DIR so settings saved in the UI persist across restarts.
+// Falls back to ~/.flowspace for non-macOS systems.
+const FLOWSPACE_DIR = process.platform === 'darwin'
+  ? path.join(os.homedir(), 'Library', 'Application Support', 'FlowSpace')
+  : path.join(os.homedir(), '.flowspace');
 const CONFIG_PATH = path.join(FLOWSPACE_DIR, 'config.json');
 const CLIENT_SECRET_PATH = path.join(FLOWSPACE_DIR, 'client_secret.json');
 const DEFAULT_PORT = 3000;
@@ -44,7 +46,6 @@ const REQUIRED_NODE_MAJOR = 20;
 
 interface FlowSpaceConfig {
   version: number;
-  appVersion?: string;
   google: {
     clientSecretPath: string;
     configured: boolean;
@@ -59,10 +60,6 @@ interface FlowSpaceConfig {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function getVersion(): string {
-  // __CLI_VERSION__ is injected at build time via esbuild --define
-  if (typeof __CLI_VERSION__ !== 'undefined' && __CLI_VERSION__ && !__CLI_VERSION__.includes('__CLI')) {
-    return __CLI_VERSION__;
-  }
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
     return pkg.version ?? '0.0.0';
@@ -83,7 +80,7 @@ function isPortAvailable(port: number): Promise<boolean> {
     server.once('listening', () => {
       server.close(() => resolve(true));
     });
-    server.listen(port, '0.0.0.0');
+    server.listen(port, '127.0.0.1');
   });
 }
 
@@ -185,7 +182,6 @@ async function runSetupWizard(): Promise<FlowSpaceConfig> {
 
   const config: FlowSpaceConfig = {
     version: 1,
-    appVersion: getVersion(),
     google: googleSection,
     ai: aiSection,
     port,
@@ -219,9 +215,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
       { value: 'openai', label: 'OpenAI', hint: 'GPT-4o, GPT-4' },
       { value: 'anthropic', label: 'Anthropic', hint: 'Claude' },
       { value: 'openrouter', label: 'OpenRouter', hint: 'Multiple models' },
-      { value: 'codex', label: 'Codex (ChatGPT Plus/Pro)', hint: 'Sign in with ChatGPT — no API key needed' },
       { value: 'lmstudio', label: 'LM Studio', hint: 'Local models, no API key needed' },
-      { value: 'custom', label: 'Custom (OpenAI-compatible)', hint: 'Any OpenAI-compatible API' },
       { value: 'skip', label: 'Skip for now', hint: 'Dashboard works without AI' },
     ],
   });
@@ -234,58 +228,6 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
   if (aiChoice === 'skip') {
     p.log.info('AI skipped. You can configure it later in Settings.');
     return { configured: false };
-  }
-
-  if (aiChoice === 'codex') {
-    // Install @openai/codex globally if not already installed
-    const { execSync } = await import('child_process');
-    let codexFound = false;
-    try {
-      execSync('codex --version', { stdio: 'ignore' });
-      codexFound = true;
-    } catch {
-      // not installed
-    }
-
-    if (!codexFound) {
-      const s = p.spinner();
-      s.start('Installing @openai/codex globally...');
-      try {
-        execSync('npm install -g @openai/codex', { stdio: 'ignore' });
-        s.stop('@openai/codex installed');
-      } catch {
-        s.stop('');
-        p.log.warn('Could not install @openai/codex automatically.');
-        p.log.info('Run manually: npm install -g @openai/codex');
-        p.log.info('Then run: codex login');
-        return { configured: false };
-      }
-    }
-
-    p.log.info('Opening browser for ChatGPT sign-in...');
-    try {
-      execSync('codex login', { stdio: 'inherit' });
-    } catch {
-      p.log.warn('codex login failed or was cancelled.');
-      p.log.info('Run "codex login" manually, then restart flowspace.');
-      return { configured: false };
-    }
-
-    const llmSettings = {
-      activeProvider: 'codex',
-      providers: {
-        codex: {
-          provider: 'codex',
-          apiKey: '',
-          model: 'o4-mini',
-        },
-      },
-    };
-    const settingsPath = path.join(FLOWSPACE_DIR, '.llm-settings.json');
-    fs.writeFileSync(settingsPath, JSON.stringify(llmSettings, null, 2), { mode: 0o600 });
-
-    p.log.success('Codex (ChatGPT) configured!');
-    return { configured: true, provider: 'codex' };
   }
 
   if (aiChoice === 'lmstudio') {
@@ -303,91 +245,11 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
         },
       },
     };
+    ensureDir(FLOWSPACE_DIR);
     const settingsPath = path.join(FLOWSPACE_DIR, '.llm-settings.json');
     fs.writeFileSync(settingsPath, JSON.stringify(llmSettings, null, 2), { mode: 0o600 });
 
     return { configured: true, provider: 'lmstudio' };
-  }
-
-  if (aiChoice === 'custom') {
-    const customName = await p.text({
-      message: 'Provider name (display name):',
-      placeholder: 'My Provider',
-      validate: (value) => {
-        if (!value || !value.trim()) return 'Provider name is required.';
-        return undefined;
-      },
-    });
-
-    if (p.isCancel(customName)) {
-      p.cancel('Setup cancelled.');
-      process.exit(0);
-    }
-
-    const customBaseUrl = await p.text({
-      message: 'Base URL (OpenAI-compatible endpoint):',
-      placeholder: 'https://api.example.com/v1',
-      validate: (value) => {
-        if (!value || !value.trim()) return 'Base URL is required.';
-        try {
-          new URL(value.trim());
-        } catch {
-          return 'Please enter a valid URL.';
-        }
-        return undefined;
-      },
-    });
-
-    if (p.isCancel(customBaseUrl)) {
-      p.cancel('Setup cancelled.');
-      process.exit(0);
-    }
-
-    const customApiKey = await p.text({
-      message: 'API key (leave empty if not required):',
-      placeholder: 'sk-...',
-    });
-
-    if (p.isCancel(customApiKey)) {
-      p.cancel('Setup cancelled.');
-      process.exit(0);
-    }
-
-    const customModel = await p.text({
-      message: 'Model name:',
-      placeholder: 'gpt-4o',
-      validate: (value) => {
-        if (!value || !value.trim()) return 'Model name is required.';
-        return undefined;
-      },
-    });
-
-    if (p.isCancel(customModel)) {
-      p.cancel('Setup cancelled.');
-      process.exit(0);
-    }
-
-    const providerId = (customName as string).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-    const llmSettings = {
-      activeProvider: providerId,
-      providers: {
-        [providerId]: {
-          provider: providerId,
-          name: (customName as string).trim(),
-          apiKey: (customApiKey as string).trim() || 'none',
-          model: (customModel as string).trim(),
-          baseUrl: (customBaseUrl as string).trim(),
-        },
-      },
-    };
-
-    const settingsPath = path.join(FLOWSPACE_DIR, '.llm-settings.json');
-    fs.writeFileSync(settingsPath, JSON.stringify(llmSettings, null, 2), { mode: 0o600 });
-
-    p.log.success(`${(customName as string).trim()} configured!`);
-
-    return { configured: true, provider: providerId };
   }
 
   // For API-key providers
@@ -395,7 +257,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
     message: `Enter your ${aiChoice === 'openai' ? 'OpenAI' : aiChoice === 'anthropic' ? 'Anthropic' : 'OpenRouter'} API key:`,
     placeholder: 'sk-...',
     validate: (value) => {
-      if (!value || !value.trim()) return 'API key is required.';
+      if (!value.trim()) return 'API key is required.';
       if (value.trim().length < 10) return 'That doesn\'t look like a valid API key.';
       return undefined;
     },
@@ -423,6 +285,7 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
     },
   };
 
+  ensureDir(FLOWSPACE_DIR);
   const settingsPath = path.join(FLOWSPACE_DIR, '.llm-settings.json');
   fs.writeFileSync(settingsPath, JSON.stringify(llmSettings, null, 2), { mode: 0o600 });
 
@@ -431,12 +294,57 @@ async function setupAI(): Promise<FlowSpaceConfig['ai']> {
   return { configured: true, provider: aiChoice as string };
 }
 
-// ── Server Launcher ──────────────────────────────────────────────────
+// ── Browser Opener ───────────────────────────────────────────────────
+
+function openBrowser(url: string): void {
+  const platform = process.platform;
+  try {
+    if (platform === 'darwin') {
+      execSync(`open "${url}"`, { stdio: 'ignore' });
+    } else if (platform === 'win32') {
+      execSync(`start "" "${url}"`, { stdio: 'ignore', shell: true });
+    } else {
+      execSync(`xdg-open "${url}"`, { stdio: 'ignore' });
+    }
+  } catch {
+    // Silently ignore — browser open is best-effort
+  }
+}
+
+function waitForServer(port: number, maxWaitMs = 15_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    function poll() {
+      const req = http.get(`http://localhost:${port}`, (res) => {
+        res.destroy();
+        resolve(true);
+      });
+      req.on('error', () => {
+        if (Date.now() - start >= maxWaitMs) {
+          resolve(false);
+        } else {
+          setTimeout(poll, 300);
+        }
+      });
+      req.setTimeout(500, () => {
+        req.destroy();
+        if (Date.now() - start >= maxWaitMs) {
+          resolve(false);
+        } else {
+          setTimeout(poll, 300);
+        }
+      });
+    }
+    poll();
+  });
+}
+
+// ── Server Launcher ───────────────────────────────────────────────────
 
 async function startServer(port: number): Promise<void> {
   // Find the server entry point
   const candidates = [
-    path.join(__dirname, '..', 'dist-server', 'server.mjs'),  // Pre-bundled (release)
+    path.join(__dirname, '..', 'dist-server', 'server.mjs'),  // Pre-bundled (npm package)
     path.join(__dirname, '..', 'server.ts'),                    // Dev mode (git clone)
   ];
 
@@ -449,6 +357,27 @@ async function startServer(port: number): Promise<void> {
   }
 
   const isBundled = serverPath.endsWith('.mjs');
+  const repoRoot = path.join(__dirname, '..');
+  const distDir = path.join(repoRoot, 'dist');
+
+  // Ensure the frontend is built — required for production mode serving
+  if (!fs.existsSync(path.join(distDir, 'index.html'))) {
+    const buildSpinner = p.spinner();
+    buildSpinner.start('Building frontend (first run)...');
+    try {
+      execSync('npm run build', {
+        stdio: 'pipe',
+        cwd: repoRoot,
+        timeout: 120_000,
+        env: getShellEnv(),
+      });
+      buildSpinner.stop('Frontend built.');
+    } catch (err) {
+      buildSpinner.stop('Frontend build failed.');
+      p.log.error('Could not build the frontend. Run `npm run build` manually and try again.');
+      process.exit(1);
+    }
+  }
 
   console.log('');
   console.log(`  FlowSpace v${getVersion()}`);
@@ -460,17 +389,26 @@ async function startServer(port: number): Promise<void> {
   const env: Record<string, string> = {
     ...getShellEnv(),
     FLOWSPACE_DATA_DIR: FLOWSPACE_DIR,
+    NODE_ENV: 'production',
     PORT: String(port),
-    NODE_ENV: isBundled ? 'production' : (process.env.NODE_ENV ?? 'development'),
   };
 
-  // Copy client_secret.json to gws config if it exists
-  if (fs.existsSync(CLIENT_SECRET_PATH)) {
-    const gwsConfigDir = path.join(os.homedir(), '.config', 'gws');
-    ensureDir(gwsConfigDir);
-    const gwsSecretDest = path.join(gwsConfigDir, 'client_secret.json');
-    if (!fs.existsSync(gwsSecretDest) || !hasValidClientSecret(gwsSecretDest)) {
-      fs.copyFileSync(CLIENT_SECRET_PATH, gwsSecretDest);
+  // Ensure client_secret.json is in FLOWSPACE_DIR so the server can load OAuth config.
+  // In a proper release, credentials are injected into server.mjs at build time.
+  // For source installs / dev testing, bootstrap from known locations.
+  if (!fs.existsSync(CLIENT_SECRET_PATH) || !hasValidClientSecret(CLIENT_SECRET_PATH)) {
+    const fallbackLocations = [
+      path.join(os.homedir(), '.config', 'gws', 'client_secret.json'),
+      path.join(repoRoot, 'client_secret.json'),
+      path.join(repoRoot, 'src-tauri', 'resources', 'client_secret.json'),
+    ];
+    for (const loc of fallbackLocations) {
+      if (fs.existsSync(loc) && hasValidClientSecret(loc)) {
+        ensureDir(FLOWSPACE_DIR);
+        fs.copyFileSync(loc, CLIENT_SECRET_PATH);
+        fs.chmodSync(CLIENT_SECRET_PATH, 0o600);
+        break;
+      }
     }
   }
 
@@ -500,39 +438,18 @@ async function startServer(port: number): Promise<void> {
       child.kill(sig);
     });
   }
+
+  // Open browser once the server is accepting connections
+  const url = `http://localhost:${port}`;
+  waitForServer(port).then((ready) => {
+    if (ready) openBrowser(url);
+  });
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
 
-/**
- * Migrate data from legacy ~/.flowspace to ~/Library/Application Support/FlowSpace.
- * Copies config.json, client_secret.json, and .llm-settings.json if the new dir
- * doesn't have them yet. Silent — never overwrites existing files in the new dir.
- */
-function migrateLegacyData(): void {
-  if (!fs.existsSync(LEGACY_FLOWSPACE_DIR)) return;
-  ensureDir(FLOWSPACE_DIR);
-
-  const filesToMigrate = ['config.json', 'client_secret.json', '.llm-settings.json', '.env'];
-  for (const file of filesToMigrate) {
-    const src = path.join(LEGACY_FLOWSPACE_DIR, file);
-    const dest = path.join(FLOWSPACE_DIR, file);
-    if (fs.existsSync(src) && !fs.existsSync(dest)) {
-      try {
-        fs.copyFileSync(src, dest);
-        fs.chmodSync(dest, 0o600);
-      } catch {
-        // Non-fatal — continue startup
-      }
-    }
-  }
-}
-
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-
-  // Migrate legacy ~/.flowspace data to new location on first run
-  migrateLegacyData();
 
   // Handle flags
   if (args.includes('--version') || args.includes('-v')) {
@@ -545,10 +462,9 @@ async function main(): Promise<void> {
   flowspace — Personal Google Workspace dashboard with AI assistant
 
   Usage:
-    flowspace            Start FlowSpace (runs setup on first use)
-    flowspace setup      Re-run the setup wizard
-    flowspace doctor     Check system health
-    flowspace reset      Delete all settings for a clean start
+    npx flowspace            Start FlowSpace (runs setup on first use)
+    npx flowspace setup      Re-run the setup wizard
+    npx flowspace doctor     Check system health
 
   Options:
     --port <number>   Use a specific port (default: 3000)
@@ -575,21 +491,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (subcommand === 'reset') {
-    p.intro('FlowSpace Reset');
-    const confirm = await p.confirm({
-      message: `Delete all FlowSpace settings in ${FLOWSPACE_DIR}? This cannot be undone.`,
-    });
-    if (p.isCancel(confirm) || !confirm) { p.cancel('Cancelled.'); process.exit(0); }
-    if (fs.existsSync(FLOWSPACE_DIR)) {
-      fs.readdirSync(FLOWSPACE_DIR).forEach(f => {
-        try { fs.rmSync(path.join(FLOWSPACE_DIR, f), { recursive: true }); } catch { /* ignore */ }
-      });
-    }
-    p.outro('All settings cleared. Run "flowspace" to set up again.');
-    return;
-  }
-
   // ── Default: start server ─────────────────────────────────────────
 
   if (!checkNodeVersion()) {
@@ -601,90 +502,26 @@ async function main(): Promise<void> {
   const portIdx = args.indexOf('--port');
   const port = portIdx >= 0 ? parseInt(args[portIdx + 1], 10) || DEFAULT_PORT : DEFAULT_PORT;
 
-  // Check config — run setup if first time, or prompt on version change
+  // Check config — skip setup if user already has an existing installation
   let config = readConfig();
   if (!config) {
-    // Check for an existing install with no config (e.g. migrated from old version)
     const hasExistingData = fs.existsSync(FLOWSPACE_DIR) &&
-      fs.readdirSync(FLOWSPACE_DIR).some(f => ['.llm-settings.json', '.tokens.json', '.accounts.json'].includes(f));
+      fs.readdirSync(FLOWSPACE_DIR).some(f =>
+        ['.llm-settings.json', '.tokens.json', '.accounts.json', 'client_secret.json'].includes(f)
+      );
 
     if (hasExistingData) {
-      p.intro('Welcome back to FlowSpace');
-      p.note(
-        'An existing FlowSpace installation was found, but setup has not been completed.\n' +
-        'Your existing Google sign-in and settings will be preserved.',
-        'Existing installation detected'
-      );
-      const action = await p.select({
-        message: 'What would you like to do?',
-        options: [
-          { value: 'keep', label: 'Keep existing settings and start', hint: 'Recommended — your Google account stays connected' },
-          { value: 'setup', label: 'Re-run setup wizard', hint: 'Configure a new AI provider or change settings' },
-          { value: 'fresh', label: 'Start fresh (delete all settings)', hint: 'Removes all saved accounts and settings' },
-        ],
-      });
-
-      if (p.isCancel(action)) { p.cancel('Cancelled.'); process.exit(0); }
-
-      if (action === 'fresh') {
-        const confirm = await p.confirm({ message: 'Delete all FlowSpace settings? This cannot be undone.' });
-        if (p.isCancel(confirm) || !confirm) { p.cancel('Cancelled.'); process.exit(0); }
-        fs.readdirSync(FLOWSPACE_DIR).forEach(f => {
-          try { fs.rmSync(path.join(FLOWSPACE_DIR, f), { recursive: true }); } catch { /* ignore */ }
-        });
-        p.log.success('Settings cleared.');
-        config = await runSetupWizard();
-      } else if (action === 'setup') {
-        config = await runSetupWizard();
-      } else {
-        // Keep existing — write a minimal config so we don't ask again
-        config = { version: 1, appVersion: getVersion(), google: { clientSecretPath: '', configured: true }, ai: { configured: false }, port: DEFAULT_PORT };
-        writeConfig(config);
-      }
-    } else {
-      config = await runSetupWizard();
-    }
-  } else if (!config.appVersion || config.appVersion !== getVersion()) {
-    // appVersion missing (old install) or version changed — ask if they want to re-run setup
-    p.intro(`FlowSpace v${getVersion()}`);
-    const action = await p.select({
-      message: 'Your settings from the previous version are intact. What would you like to do?',
-      options: [
-        { value: 'keep', label: 'Keep existing settings and start', hint: 'Recommended' },
-        { value: 'setup', label: 'Re-run setup wizard', hint: 'Reconfigure AI provider or other settings' },
-      ],
-    });
-
-    if (p.isCancel(action)) { p.cancel('Cancelled.'); process.exit(0); }
-
-    if (action === 'setup') {
-      config = await runSetupWizard();
-    } else {
-      // Update stored version
-      config = { ...config, appVersion: getVersion() };
+      // Existing install with no config — preserve data, just write a minimal config
+      config = { version: 1, google: { clientSecretPath: '', configured: true }, ai: { configured: false }, port: DEFAULT_PORT };
       writeConfig(config);
+    } else {
+      config = await runSetupWizard();
     }
   }
 
-  // Check port availability
+  // Check port
   const portFree = await isPortAvailable(port);
   if (!portFree) {
-    // Non-interactive (piped, background): auto-find next free port
-    if (!process.stdin.isTTY) {
-      let altPort = port + 1;
-      while (altPort < port + 100) {
-        if (await isPortAvailable(altPort)) break;
-        altPort++;
-      }
-      if (altPort >= port + 100) {
-        console.error(`\n  No available port found in range ${port}–${port + 99}.\n`);
-        process.exit(1);
-      }
-      console.log(`  Port ${port} in use, using ${altPort} instead.`);
-      return startServer(altPort);
-    }
-
-    // Interactive: prompt user
     const action = await p.select({
       message: `Port ${port} is already in use.`,
       options: [
@@ -700,14 +537,7 @@ async function main(): Promise<void> {
 
     if (action === 'kill') {
       try {
-        const pids = execFileSync('lsof', ['-ti', `:${port}`], { stdio: 'pipe' })
-          .toString()
-          .trim()
-          .split('\n')
-          .filter(Boolean);
-        for (const pid of pids) {
-          try { process.kill(Number(pid), 'SIGKILL'); } catch { /* already dead */ }
-        }
+        execSync(`lsof -ti :${port} | xargs kill -9`, { stdio: 'pipe' });
         p.log.success(`Killed process on port ${port}.`);
       } catch {
         p.log.error(`Could not kill process on port ${port}.`);
@@ -716,6 +546,7 @@ async function main(): Promise<void> {
     }
 
     if (action === 'alt') {
+      // Find next available port
       let altPort = port + 1;
       while (altPort < port + 100) {
         if (await isPortAvailable(altPort)) break;
@@ -749,14 +580,15 @@ async function runDoctor(): Promise<void> {
   checks.push({
     name: 'Config',
     ok: config !== null,
-    detail: config ? CONFIG_PATH : 'Not found — run: flowspace setup',
+    detail: config ? CONFIG_PATH : 'Not found — run: npx flowspace setup',
   });
 
-  // OAuth credentials are injected into the server binary at release time — no file needed
+  // client_secret.json
+  const hasSecret = fs.existsSync(CLIENT_SECRET_PATH) && hasValidClientSecret(CLIENT_SECRET_PATH);
   checks.push({
     name: 'Google OAuth',
-    ok: true,
-    detail: 'Bundled (no setup required)',
+    ok: hasSecret,
+    detail: hasSecret ? 'client_secret.json found' : 'Missing — run: npx flowspace setup',
   });
 
   // gws CLI
@@ -821,7 +653,7 @@ async function runDoctor(): Promise<void> {
   } else {
     const critical = checks.filter(c => !c.ok && !['AI Provider', `Port ${DEFAULT_PORT}`].includes(c.name));
     if (critical.length > 0) {
-      console.log('  Some checks failed. Run: flowspace setup\n');
+      console.log('  Some checks failed. Run: npx flowspace setup\n');
     } else {
       console.log('  Non-critical issues found. FlowSpace should still work.\n');
     }

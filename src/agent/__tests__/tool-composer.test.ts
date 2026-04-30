@@ -1,19 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { DynamicToolDef } from '../dynamic-tool-types';
+import type { DynamicToolDef, DynamicToolResult } from '../dynamic-tool-types';
+import type { ApprovalRequiredResult } from '../tool-composer';
 
-// Mock executeTool from tools.ts so we don't call real Google APIs
+/** Narrow a union result to DynamicToolResult — throws if it's an approval_required. */
+function asDynamicResult(result: DynamicToolResult | ApprovalRequiredResult): DynamicToolResult {
+  if ('type' in result && result.type === 'approval_required') {
+    throw new Error('Expected DynamicToolResult but got approval_required');
+  }
+  return result as DynamicToolResult;
+}
+
+// Mock executeTool, isWriteTool, and buildApprovalRequest from tools.ts so we don't call real Google APIs
 vi.mock('../tools.js', () => ({
   executeTool: vi.fn(),
+  isWriteTool: vi.fn(),
+  buildApprovalRequest: vi.fn(),
 }));
 
 // Import after mock setup
 import { validateDynamicTool, executeDynamicTool, interpolate } from '../tool-composer';
-import { executeTool } from '../tools.js';
+import { executeTool, isWriteTool, buildApprovalRequest } from '../tools.js';
 
 const mockedExecuteTool = vi.mocked(executeTool);
+const mockedIsWriteTool = vi.mocked(isWriteTool);
+const mockedBuildApprovalRequest = vi.mocked(buildApprovalRequest);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: all tools are read tools (not write)
+  mockedIsWriteTool.mockReturnValue(false);
 });
 
 // ── validateDynamicTool ──────────────────────────────────────────────
@@ -179,6 +194,41 @@ describe('interpolate', () => {
     });
     expect(result).toBe('');
   });
+
+  it('should resolve {{steps.<outputKey>.field}} using outputKey name', () => {
+    const result = interpolate('IDs: {{steps.search_result.thread_ids}}', {
+      input: {},
+      steps: [{ thread_ids: 'id-1,id-2' }],
+      outputKeys: { search_result: { thread_ids: 'id-1,id-2' } },
+    });
+    expect(result).toBe('IDs: id-1,id-2');
+  });
+
+  it('should prefer numeric index over outputKey when both could match', () => {
+    const result = interpolate('{{steps.0.val}}', {
+      input: {},
+      steps: [{ val: 'from-index' }],
+      outputKeys: { '0': { val: 'from-key' } },
+    });
+    expect(result).toBe('from-index');
+  });
+
+  it('should return empty string when outputKey not found', () => {
+    const result = interpolate('{{steps.missing_key.field}}', {
+      input: {},
+      steps: [],
+      outputKeys: {},
+    });
+    expect(result).toBe('');
+  });
+
+  it('should fall back gracefully when outputKeys is undefined', () => {
+    const result = interpolate('{{steps.my_key.field}}', {
+      input: {},
+      steps: [],
+    });
+    expect(result).toBe('');
+  });
 });
 
 // ── executeDynamicTool ───────────────────────────────────────────────
@@ -196,13 +246,13 @@ describe('executeDynamicTool', () => {
       createdAt: '2026-03-17T00:00:00Z',
     };
 
-    const result = await executeDynamicTool(tool, {});
+    const result = asDynamicResult(await executeDynamicTool(tool, {}));
 
     expect(result.success).toBe(true);
     expect(result.stepResults).toHaveLength(1);
     expect(result.stepResults[0].action).toBe('list_tasks');
     expect(result.stepResults[0].success).toBe(true);
-    expect(mockedExecuteTool).toHaveBeenCalledWith('list_tasks', {}, undefined);
+    expect(mockedExecuteTool).toHaveBeenCalledWith('list_tasks', {}, undefined, 'chat');
   });
 
   it('should interpolate input args into step arguments', async () => {
@@ -225,6 +275,7 @@ describe('executeDynamicTool', () => {
       'sheets_create',
       { title: 'Expenses Q1' },
       undefined,
+      'chat',
     );
   });
 
@@ -246,7 +297,7 @@ describe('executeDynamicTool', () => {
       createdAt: '2026-03-17T00:00:00Z',
     };
 
-    const result = await executeDynamicTool(tool, { title: 'Test' });
+    const result = asDynamicResult(await executeDynamicTool(tool, { title: 'Test' }));
 
     expect(result.success).toBe(true);
     expect(result.stepResults).toHaveLength(2);
@@ -255,6 +306,7 @@ describe('executeDynamicTool', () => {
       'sheets_append',
       { spreadsheet_id: 'abc', values: '[["A","B"]]' },
       undefined,
+      'chat',
     );
   });
 
@@ -273,7 +325,7 @@ describe('executeDynamicTool', () => {
       createdAt: '2026-03-17T00:00:00Z',
     };
 
-    const result = await executeDynamicTool(tool, {});
+    const result = asDynamicResult(await executeDynamicTool(tool, {}));
 
     expect(result.success).toBe(false);
     expect(result.output).toContain('Step 1');
@@ -294,7 +346,7 @@ describe('executeDynamicTool', () => {
       createdAt: '2026-03-17T00:00:00Z',
     };
 
-    const result = await executeDynamicTool(tool, {});
+    const result = asDynamicResult(await executeDynamicTool(tool, {}));
 
     expect(result.success).toBe(false);
     expect(result.output).toContain('Network timeout');
@@ -314,14 +366,14 @@ describe('executeDynamicTool', () => {
       createdAt: '2026-03-17T00:00:00Z',
     };
 
-    const result = await executeDynamicTool(tool, {}, controller.signal);
+    const result = asDynamicResult(await executeDynamicTool(tool, {}, controller.signal));
 
     expect(result.success).toBe(false);
     expect(result.output).toContain('aborted');
     expect(mockedExecuteTool).not.toHaveBeenCalled();
   });
 
-  it('should return last step output as final output on success', async () => {
+  it('should include last step output in the final output on success', async () => {
     mockedExecuteTool.mockResolvedValueOnce('step1 output');
     mockedExecuteTool.mockResolvedValueOnce('final output');
 
@@ -337,9 +389,154 @@ describe('executeDynamicTool', () => {
       createdAt: '2026-03-17T00:00:00Z',
     };
 
-    const result = await executeDynamicTool(tool, {});
+    const result = asDynamicResult(await executeDynamicTool(tool, {}));
 
     expect(result.success).toBe(true);
-    expect(result.output).toBe('final output');
+    expect(result.output).toContain('final output');
+  });
+});
+
+// ── executeDynamicTool — write-approval gate ─────────────────────────
+
+describe('executeDynamicTool — write-approval gate', () => {
+  it('halts at a write step and returns approval_required instead of executing', async () => {
+    const fakeApproval = {
+      id: 'send_email:123',
+      toolName: 'send_email',
+      fields: [],
+      toolArgs: {},
+    };
+    mockedIsWriteTool.mockImplementation((name) => name === 'send_email');
+    mockedBuildApprovalRequest.mockReturnValue(fakeApproval as any);
+
+    const tool: DynamicToolDef = {
+      name: 'send_and_list',
+      description: 'Send email then list tasks',
+      parameters: { type: 'object', properties: {} },
+      steps: [
+        { action: 'send_email', args: { to: '{{input.to}}', subject: 'Hi', body: 'Hello' } },
+        { action: 'list_tasks', args: {} },
+      ],
+      isWriteTool: true,
+      createdAt: '2026-03-17T00:00:00Z',
+    };
+
+    const result = await executeDynamicTool(tool, { to: 'a@b.com' });
+
+    // Should NOT have called executeTool — halted before execution
+    expect(mockedExecuteTool).not.toHaveBeenCalled();
+    // Should return the approval_required shape
+    expect(result).toHaveProperty('type', 'approval_required');
+    // approval should be the fakeApproval merged with context fields
+    expect((result as any).approval.toolName).toBe('send_email');
+    expect((result as any).approval.toolArgs).toMatchObject({ to: 'a@b.com', _dynamicToolName: 'send_and_list', _stepIndex: 0 });
+    expect((result as any).completedSteps).toHaveLength(0);
+  });
+
+  it('executes read-only steps normally and returns DynamicToolResult when no write steps', async () => {
+    mockedIsWriteTool.mockReturnValue(false);
+    mockedExecuteTool.mockResolvedValue(JSON.stringify({ items: [] }));
+
+    const tool: DynamicToolDef = {
+      name: 'read_only',
+      description: 'Only reads',
+      parameters: { type: 'object', properties: {} },
+      steps: [
+        { action: 'list_tasks', args: {} },
+        { action: 'search_drive', args: { query: 'test' } },
+      ],
+      isWriteTool: false,
+      createdAt: '2026-03-17T00:00:00Z',
+    };
+
+    const rawResult = await executeDynamicTool(tool, {});
+    const result = asDynamicResult(rawResult);
+
+    expect(result.success).toBe(true);
+    expect(result.stepResults).toHaveLength(2);
+    // Should NOT be the approval_required shape
+    expect(rawResult).not.toHaveProperty('type', 'approval_required');
+    expect(mockedExecuteTool).toHaveBeenCalledTimes(2);
+  });
+
+  it('executes read steps and halts at the first write step in a mixed workflow', async () => {
+    mockedIsWriteTool.mockImplementation((name) => name === 'send_email');
+    mockedExecuteTool.mockResolvedValueOnce(JSON.stringify({ files: [{ id: 'file1' }] }));
+
+    const fakeApproval = {
+      id: 'send_email:456',
+      toolName: 'send_email',
+      fields: [],
+      toolArgs: {},
+    };
+    mockedBuildApprovalRequest.mockReturnValue(fakeApproval as any);
+
+    const tool: DynamicToolDef = {
+      name: 'search_then_email',
+      description: 'Search then send email',
+      parameters: { type: 'object', properties: {} },
+      steps: [
+        { action: 'search_drive', args: { query: '{{input.query}}' } },
+        { action: 'send_email', args: { to: '{{input.to}}', subject: 'Results', body: '{{steps.0.files}}' } },
+        { action: 'list_tasks', args: {} }, // should not be reached
+      ],
+      isWriteTool: true,
+      createdAt: '2026-03-17T00:00:00Z',
+    };
+
+    const result = await executeDynamicTool(tool, { query: 'budget', to: 'a@b.com' });
+
+    // The read step (search_drive) should have executed
+    expect(mockedExecuteTool).toHaveBeenCalledTimes(1);
+    expect(mockedExecuteTool).toHaveBeenCalledWith('search_drive', { query: 'budget' }, undefined, 'chat');
+    // Halted at send_email
+    expect(result).toHaveProperty('type', 'approval_required');
+    expect((result as any).approval.toolName).toBe('send_email');
+    expect((result as any).approval.toolArgs).toMatchObject({ to: 'a@b.com', _dynamicToolName: 'search_then_email', _stepIndex: 1 });
+    // completedSteps should include the search_drive result
+    expect((result as any).completedSteps).toHaveLength(1);
+    expect((result as any).completedSteps[0].action).toBe('search_drive');
+    // list_tasks should NOT have been called
+    expect(mockedExecuteTool).not.toHaveBeenCalledWith('list_tasks', expect.anything(), expect.anything());
+  });
+});
+
+// ── executeDynamicTool — outputKey chaining ──────────────────────────
+
+describe('executeDynamicTool — outputKey chaining', () => {
+  it('should wire step result to next step via outputKey name template', async () => {
+    // Step 0: search_emails returns JSON with thread_ids
+    mockedExecuteTool.mockResolvedValueOnce(
+      JSON.stringify({ messages: [], thread_ids: ['t-1', 't-2'], resultSizeEstimate: 2 }),
+    );
+    // Step 1: apply_label_to_threads — will hit isWriteTool gate
+    mockedIsWriteTool.mockImplementation((name) => name === 'apply_label_to_threads');
+    mockedBuildApprovalRequest.mockReturnValue({
+      id: 'apply_label_to_threads:123',
+      toolName: 'apply_label_to_threads',
+      fields: [],
+      toolArgs: {},
+    } as any);
+
+    const tool: DynamicToolDef = {
+      name: 'sweep_credit_card_emails',
+      description: 'Search and label',
+      parameters: { type: 'object', properties: {} },
+      steps: [
+        { action: 'search_emails', args: { query: 'credit card' }, outputKey: 'credit_card_threads' },
+        { action: 'apply_label_to_threads', args: { thread_ids: '{{steps.credit_card_threads.thread_ids}}', label_name: 'Finance' } },
+      ],
+      isWriteTool: true,
+      createdAt: '2026-04-16T00:00:00Z',
+    };
+
+    const result = await executeDynamicTool(tool, {});
+
+    expect(result).toHaveProperty('type', 'approval_required');
+    // The resolved thread_ids should be the actual IDs from step 0, not empty string
+    expect(mockedBuildApprovalRequest).toHaveBeenCalledWith(
+      'apply_label_to_threads',
+      expect.objectContaining({ thread_ids: 't-1,t-2', label_name: 'Finance' }),
+    );
   });
 });

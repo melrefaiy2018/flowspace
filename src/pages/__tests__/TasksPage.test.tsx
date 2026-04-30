@@ -57,6 +57,14 @@ vi.mock('../../hooks/useTasksPage', () => ({
   useTasksPage: () => tasksState,
 }));
 
+vi.mock('../../context/ChatContext', () => ({
+  useChatContext: () => ({
+    triggerAction: vi.fn(),
+    openChatPanel: vi.fn(),
+    setInput: vi.fn(),
+  }),
+}));
+
 
 describe('TasksPage', () => {
   beforeEach(() => {
@@ -72,7 +80,7 @@ describe('TasksPage', () => {
     expect(screen.getByText('Task Board')).toBeTruthy();
     expect(screen.getAllByText('Review security alert')).toHaveLength(2);
     expect(screen.getByText('Send handoff')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /mark complete/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /mark task complete/i })).toBeTruthy();
     expect(screen.getByRole('link', { name: /open in gmail/i })).toBeTruthy();
   });
 
@@ -94,7 +102,7 @@ describe('TasksPage', () => {
   it('fires snooze and complete actions from the detail panel', () => {
     render(<TasksPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: /mark complete/i }));
+    fireEvent.click(screen.getByRole('button', { name: /mark task complete/i }));
     expect(tasksState.completeTask).toHaveBeenCalledWith(tasksState.selectedTask);
 
     fireEvent.click(screen.getByRole('button', { name: /tomorrow/i }));

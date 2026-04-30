@@ -1,0 +1,823 @@
+{
+  "auth_status": {
+    "authenticated": true,
+    "auth_method": "oauth",
+    "user": {
+      "name": "Jamie Chen",
+      "email": "jamie.chen@linearsync.io",
+      "picture": null
+    },
+    "accounts": [
+      {
+        "id": "acct-001",
+        "email": "jamie.chen@linearsync.io",
+        "name": "Jamie Chen",
+        "picture": null,
+        "scopes": ["drive", "gmail", "calendar", "tasks"],
+        "connectedAt": 1744300000000,
+        "lastUsedAt": 1744300000000,
+        "auth_method": "oauth"
+      }
+    ],
+    "activeAccountId": "acct-001"
+  },
+
+  "stats": {
+    "driveFilesRecent": 18,
+    "unreadEmails": 11,
+    "upcomingEvents": 6,
+    "openTasks": 7
+  },
+
+  "drive_recent": {
+    "files": [
+      {
+        "id": "drive-001",
+        "name": "Enterprise Customers — Account Health Tracker",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "modifiedTime": "2026-04-10T08:30:00Z",
+        "webViewLink": "https://docs.google.com/spreadsheets/d/drive-001/edit",
+        "shared": true,
+        "size": null
+      },
+      {
+        "id": "drive-002",
+        "name": "Q2 2026 — Product Roadmap",
+        "mimeType": "application/vnd.google-apps.presentation",
+        "modifiedTime": "2026-04-09T17:45:00Z",
+        "webViewLink": "https://docs.google.com/presentation/d/drive-002/edit",
+        "shared": true,
+        "size": null
+      },
+      {
+        "id": "drive-003",
+        "name": "Acme Corp — Renewal Call Notes (Apr 8)",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-08T15:20:00Z",
+        "webViewLink": "https://docs.google.com/document/d/drive-003/edit",
+        "shared": false,
+        "size": null
+      },
+      {
+        "id": "drive-004",
+        "name": "Feature Request Backlog — Imported from Zendesk",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "modifiedTime": "2026-04-08T11:00:00Z",
+        "webViewLink": "https://docs.google.com/spreadsheets/d/drive-004/edit",
+        "shared": true,
+        "size": null
+      },
+      {
+        "id": "drive-005",
+        "name": "Sprint 22 Retro Notes",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-07T16:30:00Z",
+        "webViewLink": "https://docs.google.com/document/d/drive-005/edit",
+        "shared": true,
+        "size": null
+      },
+      {
+        "id": "drive-006",
+        "name": "NPS Survey Results — March 2026.xlsx",
+        "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "modifiedTime": "2026-04-07T10:15:00Z",
+        "webViewLink": "https://drive.google.com/file/d/drive-006/view",
+        "shared": true,
+        "size": "312480"
+      },
+      {
+        "id": "drive-007",
+        "name": "Pricing Proposal — Meridian Health",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-06T14:00:00Z",
+        "webViewLink": "https://docs.google.com/document/d/drive-007/edit",
+        "shared": false,
+        "size": null
+      },
+      {
+        "id": "drive-008",
+        "name": "Competitor Analysis — April 2026",
+        "mimeType": "application/vnd.google-apps.presentation",
+        "modifiedTime": "2026-04-05T09:00:00Z",
+        "webViewLink": "https://docs.google.com/presentation/d/drive-008/edit",
+        "shared": true,
+        "size": null
+      },
+      {
+        "id": "drive-009",
+        "name": "⚡ Infra Cost Breakdown — Board Meeting Apr 10 [DRAFT — created by FlowSpace agent at 3:07 AM]",
+        "mimeType": "application/vnd.google-apps.document",
+        "modifiedTime": "2026-04-10T03:07:00Z",
+        "webViewLink": "https://docs.google.com/document/d/drive-009/edit",
+        "shared": false,
+        "size": null,
+        "_agentCreated": true
+      }
+    ]
+  },
+
+  "gmail_recent": {
+    "messages": [
+      {
+        "id": "msg-001",
+        "threadId": "thread-001",
+        "snippet": "Hi Jamie — we just got off a call with the Acme Corp team. They're flagging a critical issue with bulk data exports timing out on datasets over 50k rows. Their contract renewal is in 3 weeks and this is now a blocker. Marcus says they'll churn if it's not fixed.",
+        "from": "Priya Nair <priya.nair@linearsync.io>",
+        "subject": "URGENT: Acme Corp renewal at risk — bulk export bug",
+        "date": "Thu, 10 Apr 2026 09:15:00 +0000",
+        "labelIds": ["INBOX", "UNREAD"],
+        "unread": true
+      },
+      {
+        "id": "msg-002",
+        "threadId": "thread-002",
+        "snippet": "Hey — following up on the API rate limiting feature we discussed last month. Our team has been blocked on this for 6 weeks. It's the #1 item on our integration roadmap and we've had to pause two customer onboardings because of it. Can we get a status update?",
+        "from": "Tom Briggs <t.briggs@meridianhealth.com>",
+        "subject": "API rate limiting — still no update after 6 weeks",
+        "date": "Thu, 10 Apr 2026 08:42:00 +0000",
+        "labelIds": ["INBOX", "UNREAD"],
+        "unread": true
+      },
+      {
+        "id": "msg-003",
+        "threadId": "thread-003",
+        "snippet": "The sprint 22 retro surfaced a recurring pattern: 4 of the last 6 sprints had scope creep from late-breaking customer escalations. The team wants to add a buffer to sprint planning. Can we discuss at tomorrow's planning session?",
+        "from": "Dev Kapoor <dev.kapoor@linearsync.io>",
+        "subject": "Sprint 22 Retro — scope creep trend (needs discussion tomorrow)",
+        "date": "Wed, 09 Apr 2026 17:00:00 +0000",
+        "labelIds": ["INBOX", "UNREAD"],
+        "unread": true
+      },
+      {
+        "id": "msg-004",
+        "threadId": "thread-004",
+        "snippet": "Attached are the March NPS results. Overall score: 41 (down from 52 in Feb). The biggest driver of detractor responses was 'slow export performance' — mentioned in 18 out of 23 negative responses. Full breakdown in the attached sheet.",
+        "from": "Analytics Bot <analytics@linearsync.io>",
+        "subject": "March NPS Results — score dropped to 41 (was 52)",
+        "date": "Wed, 09 Apr 2026 09:00:00 +0000",
+        "labelIds": ["INBOX", "UNREAD"],
+        "unread": true
+      },
+      {
+        "id": "msg-005",
+        "threadId": "thread-005",
+        "snippet": "Quick note — Meridian Health's procurement team reached out directly asking if we can provide a SOC 2 Type II report before their April 30 deadline. If we can't provide it by then, they'll have to pause the expansion deal.",
+        "from": "Elena Frost <e.frost@linearsync.io>",
+        "subject": "Meridian Health needs SOC 2 report by April 30",
+        "date": "Wed, 09 Apr 2026 14:30:00 +0000",
+        "labelIds": ["INBOX", "UNREAD"],
+        "unread": true
+      },
+      {
+        "id": "msg-006",
+        "threadId": "thread-006",
+        "snippet": "We wrapped the customer interview with Shopify's integration team. Key findings: they want webhook retry logic, better error messages on failed syncs, and a bulk import UI. Full notes are in the shared doc.",
+        "from": "Aisha Williams <aisha.w@linearsync.io>",
+        "subject": "Customer Interview Notes — Shopify integration team",
+        "date": "Tue, 08 Apr 2026 16:45:00 +0000",
+        "labelIds": ["INBOX"],
+        "unread": false
+      },
+      {
+        "id": "msg-007",
+        "threadId": "thread-007",
+        "snippet": "Hi Jamie, I saw your talk at ProductCon last week — loved the bit about async-first teams. I'm a PM at Notion and we're facing a similar challenge scaling our API. Would love to grab coffee or a 30-min call sometime.",
+        "from": "Carlos Reyes <c.reyes@notion.so>",
+        "subject": "Loved your ProductCon talk — coffee?",
+        "date": "Tue, 08 Apr 2026 11:20:00 +0000",
+        "labelIds": ["INBOX", "UNREAD"],
+        "unread": true
+      },
+      {
+        "id": "msg-008",
+        "threadId": "thread-008",
+        "snippet": "Your Q2 roadmap deck has been shared with the board. They've added 4 comments. The main question is around the timeline for the enterprise SSO feature — they want it pulled into Q2 from Q3.",
+        "from": "Board Portal <board@linearsync.io>",
+        "subject": "Q2 Roadmap — 4 board comments added",
+        "date": "Mon, 07 Apr 2026 18:00:00 +0000",
+        "labelIds": ["INBOX"],
+        "unread": false
+      },
+      {
+        "id": "msg-009",
+        "threadId": "thread-009",
+        "snippet": "This is a reminder that your AWS bill for March was $18,420 — up 34% from February. The spike is in data transfer costs. Full cost breakdown attached.",
+        "from": "AWS Billing <billing@aws.amazon.com>",
+        "subject": "AWS March Bill — $18,420 (↑34% from Feb)",
+        "date": "Mon, 07 Apr 2026 09:00:00 +0000",
+        "labelIds": ["INBOX"],
+        "unread": false
+      },
+      {
+        "id": "msg-010",
+        "threadId": "thread-010",
+        "snippet": "Hey Jamie — really sorry to ping at this hour. Board meeting just got moved to 9 AM tomorrow. I need the infra cost breakdown doc ready before standup. Can you pull the Q1 numbers from the cost tracking sheet and write up a 1-pager with the key findings? The board specifically wants to see the AWS spike explained. This is urgent.",
+        "from": "Sarah Chen <s.chen@linearsync.io>",
+        "subject": "URGENT: Board meeting moved to 9 AM — need infra cost doc before standup",
+        "date": "Fri, 10 Apr 2026 03:04:00 +0000",
+        "labelIds": ["INBOX", "UNREAD"],
+        "unread": true,
+        "_scenario": "proactive_draft",
+        "_agentHandled": true,
+        "_agentHandledAt": "2026-04-10T03:07:00Z"
+      }
+    ]
+  },
+
+  "calendar_upcoming": {
+    "events": [
+      {
+        "id": "evt-001",
+        "summary": "Daily Standup",
+        "start": "2026-04-10T09:30:00-07:00",
+        "end": "2026-04-10T09:45:00-07:00",
+        "attendeeCount": 7,
+        "hangoutLink": "https://meet.google.com/aaa-bbbb-ccc",
+        "status": "confirmed"
+      },
+      {
+        "id": "evt-002",
+        "summary": "Acme Corp — Renewal Check-in",
+        "start": "2026-04-10T11:00:00-07:00",
+        "end": "2026-04-10T11:30:00-07:00",
+        "attendeeCount": 4,
+        "hangoutLink": "https://meet.google.com/ddd-eeee-fff",
+        "status": "confirmed"
+      },
+      {
+        "id": "evt-003",
+        "summary": "Sprint 23 Planning",
+        "start": "2026-04-11T10:00:00-07:00",
+        "end": "2026-04-11T12:00:00-07:00",
+        "attendeeCount": 9,
+        "hangoutLink": "https://meet.google.com/ggg-hhhh-iii",
+        "status": "confirmed"
+      },
+      {
+        "id": "evt-004",
+        "summary": "1:1 with CEO (Roadmap Review)",
+        "start": "2026-04-11T14:00:00-07:00",
+        "end": "2026-04-11T14:45:00-07:00",
+        "attendeeCount": 2,
+        "hangoutLink": null,
+        "status": "confirmed"
+      },
+      {
+        "id": "evt-005",
+        "summary": "Meridian Health — Expansion Scoping Call",
+        "start": "2026-04-14T09:00:00-07:00",
+        "end": "2026-04-14T10:00:00-07:00",
+        "attendeeCount": 6,
+        "hangoutLink": "https://meet.google.com/jjj-kkkk-lll",
+        "status": "confirmed"
+      },
+      {
+        "id": "evt-006",
+        "summary": "Product Roadmap Sync — Board Prep",
+        "start": "2026-04-15T15:00:00-07:00",
+        "end": "2026-04-15T16:00:00-07:00",
+        "attendeeCount": 5,
+        "hangoutLink": "https://meet.google.com/mmm-nnnn-ooo",
+        "status": "confirmed"
+      }
+    ]
+  },
+
+  "activity_recent": {
+    "activities": [
+      {
+        "type": "agent",
+        "title": "Agent drafted infra cost doc while you slept",
+        "subtitle": "Triggered by Sarah Chen's 3:04 AM email · Doc ready to review",
+        "time": "2026-04-10T03:07:00.000Z",
+        "icon": "sparkles",
+        "url": "https://docs.google.com/document/d/drive-009/edit"
+      },
+      {
+        "type": "gmail",
+        "title": "URGENT: Board meeting moved to 9 AM — need infra cost doc",
+        "subtitle": "s.chen@linearsync.io · 3:04 AM",
+        "time": "2026-04-10T03:04:00.000Z",
+        "icon": "mail",
+        "url": "https://mail.google.com/mail/#inbox/thread-010"
+      },
+      {
+        "type": "gmail",
+        "title": "URGENT: Acme Corp renewal at risk — bulk export bug",
+        "subtitle": "priya.nair@linearsync.io",
+        "time": "2026-04-10T09:15:00.000Z",
+        "icon": "mail",
+        "url": "https://mail.google.com/mail/#inbox/thread-001"
+      },
+      {
+        "type": "gmail",
+        "title": "API rate limiting — still no update after 6 weeks",
+        "subtitle": "t.briggs@meridianhealth.com",
+        "time": "2026-04-10T08:42:00.000Z",
+        "icon": "mail",
+        "url": "https://mail.google.com/mail/#inbox/thread-002"
+      },
+      {
+        "type": "drive",
+        "title": "Enterprise Customers — Account Health Tracker",
+        "subtitle": "Google Sheets · modified today",
+        "time": "2026-04-10T08:30:00.000Z",
+        "icon": "file",
+        "url": "https://docs.google.com/spreadsheets/d/drive-001/edit"
+      },
+      {
+        "type": "calendar",
+        "title": "Acme Corp — Renewal Check-in",
+        "subtitle": "4 attendees · Today 11:00 AM",
+        "time": "2026-04-10T18:00:00.000Z",
+        "icon": "calendar",
+        "url": "https://calendar.google.com/calendar/event?eid=evt-002"
+      },
+      {
+        "type": "drive",
+        "title": "Q2 2026 — Product Roadmap",
+        "subtitle": "Google Slides · 4 board comments",
+        "time": "2026-04-09T17:45:00.000Z",
+        "icon": "file",
+        "url": "https://docs.google.com/presentation/d/drive-002/edit"
+      },
+      {
+        "type": "gmail",
+        "title": "March NPS Results — score dropped to 41 (was 52)",
+        "subtitle": "analytics@linearsync.io",
+        "time": "2026-04-09T09:00:00.000Z",
+        "icon": "mail",
+        "url": "https://mail.google.com/mail/#inbox/thread-004"
+      },
+      {
+        "type": "drive",
+        "title": "Acme Corp — Renewal Call Notes (Apr 8)",
+        "subtitle": "Google Doc · private",
+        "time": "2026-04-08T15:20:00.000Z",
+        "icon": "file",
+        "url": "https://docs.google.com/document/d/drive-003/edit"
+      },
+      {
+        "type": "calendar",
+        "title": "Sprint 23 Planning",
+        "subtitle": "9 attendees · Tomorrow 10:00 AM",
+        "time": "2026-04-11T17:00:00.000Z",
+        "icon": "calendar",
+        "url": "https://calendar.google.com/calendar/event?eid=evt-003"
+      }
+    ]
+  },
+
+  "sheets_data": {
+    "account_health": {
+      "spreadsheetId": "drive-001",
+      "range": "Sheet1!A1:H8",
+      "values": [
+        ["Account", "ARR", "Health Score", "Last Contact", "Renewal Date", "Open Issues", "NPS", "Risk"],
+        ["Acme Corp", "$142,000", "62", "Apr 8", "May 1", "3", "28", "HIGH"],
+        ["Meridian Health", "$89,000", "78", "Apr 5", "Jun 15", "1", "45", "MEDIUM"],
+        ["Shopify (Enterprise)", "$210,000", "91", "Apr 9", "Aug 20", "0", "67", "LOW"],
+        ["Vertex AI Labs", "$55,000", "85", "Mar 28", "Jul 10", "0", "71", "LOW"],
+        ["DataBridge Corp", "$38,000", "54", "Mar 15", "Apr 28", "4", "22", "HIGH"],
+        ["NovaTech Systems", "$67,000", "70", "Apr 2", "Sep 5", "1", "48", "MEDIUM"],
+        ["PulseMetrics", "$29,000", "88", "Apr 7", "Oct 12", "0", "73", "LOW"]
+      ]
+    },
+    "feature_requests": {
+      "spreadsheetId": "drive-004",
+      "range": "Requests!A1:F10",
+      "values": [
+        ["Request", "Source", "Votes", "ARR Impact", "Sprint", "Status"],
+        ["API rate limiting controls", "Meridian Health, 4 others", "23", "$280,000", "Sprint 23", "Planned"],
+        ["Bulk export performance (>50k rows)", "Acme Corp, DataBridge", "18", "$180,000", "Sprint 23", "In Progress"],
+        ["Webhook retry logic", "Shopify, Vertex", "15", "$265,000", "Sprint 24", "Backlog"],
+        ["Enterprise SSO (SAML/OIDC)", "Board request", "31", "$340,000", "Q3", "Under Review"],
+        ["Better sync error messages", "Shopify", "12", "$210,000", "Sprint 24", "Backlog"],
+        ["Bulk import UI", "Shopify, 3 others", "9", "$210,000", "Q3", "Backlog"],
+        ["Audit log export", "Meridian Health", "7", "$89,000", "Q3", "Backlog"],
+        ["Custom webhook headers", "Vertex AI Labs", "6", "$55,000", "Q3", "Backlog"],
+        ["Multi-region data residency", "Enterprise prospects", "14", "TBD", "Q4", "Research"]
+      ]
+    }
+  },
+
+  "docs_data": {
+    "acme_renewal_notes": {
+      "documentId": "drive-003",
+      "title": "Acme Corp — Renewal Call Notes (Apr 8)",
+      "body": "# Acme Corp — Renewal Call Notes\nDate: April 8, 2026\nAttendees: Jamie Chen (PM), Priya Nair (CSM), Marcus Webb (Acme VP Eng), Sandra Park (Acme CTO)\n\n## Key Issues Raised\n- Bulk export times out on datasets >50k rows (critical blocker)\n- Marcus mentioned their data team runs nightly exports of 200k+ rows — this is core to their workflow\n- Sandra asked if we have a timeline — she has a board meeting May 3 and needs to show this is resolved\n\n## Sentiment\n- Overall positive on the product but frustrated by this specific issue\n- Marcus: 'We love the platform but this makes it hard to justify the renewal to finance'\n- Contract renewal: May 1. 3-week window.\n\n## Action Items\n- Jamie: Escalate to eng and get a timeline by Apr 11\n- Priya: Send interim workaround doc (batching exports)\n- Jamie: Follow up with Marcus directly once we have a fix ETA\n\n## Next Call\n- Apr 22 — progress update with full team"
+    },
+    "sprint22_retro": {
+      "documentId": "drive-005",
+      "title": "Sprint 22 Retro Notes",
+      "body": "# Sprint 22 Retrospective\nDate: April 7, 2026  Facilitator: Dev Kapoor\n\n## What went well\n- Shipped webhook v2 ahead of schedule\n- Zero production incidents\n- Strong collaboration between frontend and backend\n\n## What needs improvement\n- 4 of last 6 sprints had scope added mid-sprint from customer escalations\n- Export performance fix got deprioritized twice\n- Sprint goals weren't communicated clearly to stakeholders\n\n## Action items\n- Add 15% buffer to sprint capacity for escalations\n- Dedicate Sprint 23 slot to export performance — non-negotiable\n- Jamie to send weekly sprint goal summary to Slack #product channel"
+    },
+    "infra_cost_breakdown": {
+      "documentId": "drive-009",
+      "title": "Infrastructure Cost Breakdown — Board Meeting Apr 10",
+      "body": "# Infrastructure Cost Breakdown\n*Prepared for Board Meeting — April 10, 2026*\n*⚡ Auto-drafted by FlowSpace agent at 3:07 AM based on Sarah Chen's request*\n\n---\n\n## Q1 2026 Summary\n\nTotal infrastructure spend: **$52,840** (+28% YoY)\n\n| Month | AWS | GCP | Other | Total |\n|---|---|---|---|---|\n| January | $12,100 | $1,800 | $540 | $14,440 |\n| February | $13,720 | $1,900 | $580 | $16,200 |\n| March | $18,420 | $2,100 | $680 | **$21,200** |\n\n## March Spike — Root Cause\n\nMarch AWS bill came in at **$18,420 — up 34% from February**.\n\nPrimary driver: **data transfer costs**\n- Bulk export feature usage increased 3.4× after onboarding Acme Corp (200K+ row nightly exports)\n- S3 egress costs rose from $2,100 → $5,800\n- EC2 compute (export workers) rose from $3,400 → $5,200\n\n## Cost Per Customer Segment\n\n| Segment | Avg Monthly Infra Cost | Margin |\n|---|---|---|\n| Enterprise (>$100K ARR) | $4,200 | 68% |\n| Mid-market ($30–100K ARR) | $1,100 | 81% |\n| SMB (<$30K ARR) | $280 | 87% |\n\n## Recommendations\n\n1. **Fix bulk export performance** — current implementation is O(n) memory, should be streaming. Estimated 60–70% cost reduction on large exports.\n2. **Add export quotas for trial accounts** — trial users accounted for 22% of egress costs.\n3. **Reserved instance pricing** — moving 4 EC2 instances to reserved saves ~$3,200/yr.\n\n## Projected Q2 Spend\n\nWith export fix shipped in Sprint 23: estimated **$15,800–16,400/month** (back to February levels).\nWithout fix: projected **$22,000–24,000/month** as enterprise usage grows.\n\n---\n*Sources: AWS Cost Explorer (March 2026), GCP Billing Dashboard, LinearSync cost tracking sheet*\n*Draft prepared by FlowSpace agent — please review and edit before sharing with board*"
+    }
+  },
+
+  "proactive_draft": {
+    "trigger_email": {
+      "id": "msg-010",
+      "threadId": "thread-010",
+      "from": "Sarah Chen <s.chen@linearsync.io>",
+      "subject": "URGENT: Board meeting moved to 9 AM — need infra cost doc before standup",
+      "receivedAt": "2026-04-10T03:04:00Z",
+      "body": "Hey Jamie — really sorry to ping at this hour. Board meeting just got moved to 9 AM tomorrow. I need the infra cost breakdown doc ready before standup. Can you pull the Q1 numbers from the cost tracking sheet and write up a 1-pager with the key findings? The board specifically wants to see the AWS spike explained. This is urgent."
+    },
+    "agent_actions": [
+      {
+        "step": 1,
+        "time": "2026-04-10T03:05:00Z",
+        "action": "read_email",
+        "label": "Read urgent email from Sarah Chen",
+        "detail": "Detected high-urgency signal: manager request, board meeting, document creation needed"
+      },
+      {
+        "step": 2,
+        "time": "2026-04-10T03:05:30Z",
+        "action": "search_drive",
+        "label": "Searched Drive for cost tracking sheet",
+        "detail": "Found: 'Q1 2026 Infrastructure Cost Tracking' spreadsheet"
+      },
+      {
+        "step": 3,
+        "time": "2026-04-10T03:06:00Z",
+        "action": "read_sheet",
+        "label": "Read Q1 infrastructure cost data",
+        "detail": "Pulled monthly AWS, GCP, and other spend — identified March spike (+34%)"
+      },
+      {
+        "step": 4,
+        "time": "2026-04-10T03:06:30Z",
+        "action": "read_email",
+        "label": "Cross-referenced AWS billing email",
+        "detail": "Confirmed March bill: $18,420 — spike attributed to data transfer / bulk export usage"
+      },
+      {
+        "step": 5,
+        "time": "2026-04-10T03:07:00Z",
+        "action": "create_doc",
+        "label": "Created draft doc in Drive",
+        "detail": "Created 'Infra Cost Breakdown — Board Meeting Apr 10' with full analysis and recommendations"
+      },
+      {
+        "step": 6,
+        "time": "2026-04-10T03:07:30Z",
+        "action": "draft_reply",
+        "label": "Prepared draft reply to Sarah",
+        "detail": "Draft ready to send — waiting for your approval"
+      }
+    ],
+    "draft_reply": {
+      "to": "Sarah Chen <s.chen@linearsync.io>",
+      "subject": "Re: URGENT: Board meeting moved to 9 AM — need infra cost doc before standup",
+      "body": "Hi Sarah,\n\nGot it — I've prepared the infra cost breakdown doc for the board. Here's the short version:\n\n- Q1 total: $52,840 (+28% YoY)\n- March spike: $18,420 (+34% from Feb) — driven by data transfer costs from bulk export usage (Acme Corp onboarding)\n- S3 egress costs tripled as their nightly 200K-row exports scaled up\n- With the export performance fix in Sprint 23, we project costs to return to ~$16K/month\n\nFull doc with cost tables, per-segment margins, and recommendations is ready in Drive:\n→ Infra Cost Breakdown — Board Meeting Apr 10\n\nI'll be online before standup if you need any changes.\n\nJamie",
+      "doc_link": "https://docs.google.com/document/d/drive-009/edit",
+      "doc_name": "Infra Cost Breakdown — Board Meeting Apr 10"
+    },
+    "completed_at": "2026-04-10T03:07:30Z",
+    "summary": "While you slept, I handled Sarah's 3:04 AM request. I read her email, pulled Q1 infra costs from the tracking sheet, cross-referenced the AWS billing email, and drafted a cost breakdown doc with analysis and recommendations. A draft reply to Sarah is ready — just review and send."
+  },
+
+  "briefing": {
+    "greeting": "Good morning, Jamie!",
+    "summary": "While you were asleep, I handled an urgent request from Sarah Chen — the board meeting moved to 9 AM and she needed an infra cost doc. I pulled the numbers from your tracking sheet and prepared both the doc and a draft reply. It's ready for your review.\n\nTwo customer accounts are also at risk today: Acme Corp's renewal ($142K ARR) is blocked by the bulk export bug — you have a check-in call at 11 AM. Meridian Health needs a SOC 2 report by April 30. NPS dropped from 52 to 41 — export performance is the top driver.",
+    "attention_items": [
+      {
+        "type": "proactive_draft",
+        "priority": "urgent",
+        "title": "⚡ Agent handled Sarah's 3 AM request while you slept",
+        "description": "Sarah moved the board meeting to 9 AM and needed an infra cost breakdown doc. I pulled Q1 numbers from the tracking sheet, identified the March spike, and drafted the doc and a reply. Ready to send in one click.",
+        "action_label": "Review & send reply",
+        "action_context": "proactive_draft"
+      },
+      {
+        "type": "meeting_prep",
+        "priority": "high",
+        "title": "Prep for Acme Corp Renewal Check-in (11 AM)",
+        "description": "Acme's $142K renewal is at risk. The bulk export bug is a blocker. Review Apr 8 call notes and the account health sheet before joining. You committed to having an engineering timeline by today.",
+        "action_label": "Open call notes",
+        "action_context": "evt-002"
+      },
+      {
+        "type": "email_reply",
+        "priority": "high",
+        "title": "Reply to Meridian Health — API rate limiting (6 weeks overdue)",
+        "description": "Tom Briggs has been waiting 6 weeks. The feature is now planned for Sprint 23. They've paused 2 customer onboardings because of this.",
+        "action_label": "Draft reply",
+        "action_context": "thread-002"
+      },
+      {
+        "type": "deadline",
+        "priority": "high",
+        "title": "SOC 2 report needed by April 30 for Meridian Health",
+        "description": "Meridian's procurement team needs the SOC 2 Type II report. Missing this deadline blocks their $89K expansion deal.",
+        "action_label": "View email",
+        "action_context": "thread-005"
+      },
+      {
+        "type": "email_reply",
+        "priority": "medium",
+        "title": "NPS dropped to 41 — export performance is the cause",
+        "description": "March NPS fell 11 points. 18 of 23 detractor responses cited slow export performance — same issue blocking Acme Corp. Cross-service signal.",
+        "action_label": "View NPS report",
+        "action_context": "thread-004"
+      },
+      {
+        "type": "meeting_prep",
+        "priority": "medium",
+        "title": "Sprint 23 Planning tomorrow — 7 backlog items for 9 slots",
+        "description": "Dev flagged the scope creep pattern from retro. API rate limiting and bulk export fix are both competing for Sprint 23. Review the feature request backlog.",
+        "action_label": "Open backlog",
+        "action_context": "evt-003"
+      }
+    ],
+    "inbox_triage": {
+      "needs_reply": [
+        {
+          "subject": "URGENT: Acme Corp renewal at risk — bulk export bug",
+          "sender": "priya.nair@linearsync.io",
+          "thread_id": "thread-001",
+          "summary": "Acme Corp's $142K renewal (due May 1) is blocked by bulk export timing out on >50k rows. Their CTO has a board meeting May 3. 3-week window to fix.",
+          "urgency": "urgent_action",
+          "actions": [
+            {
+              "type": "draft_reply",
+              "label": "Reply to Priya",
+              "context": { "thread_id": "thread-001", "subject": "URGENT: Acme Corp renewal at risk — bulk export bug" }
+            },
+            {
+              "type": "create_task",
+              "label": "Create escalation task",
+              "context": { "thread_id": "thread-001", "title": "Escalate bulk export bug to engineering — Acme renewal blocker" }
+            }
+          ]
+        },
+        {
+          "subject": "API rate limiting — still no update after 6 weeks",
+          "sender": "t.briggs@meridianhealth.com",
+          "thread_id": "thread-002",
+          "summary": "Tom Briggs at Meridian Health has been waiting 6 weeks for an update on API rate limiting. They've paused 2 customer onboardings as a result.",
+          "urgency": "urgent_action",
+          "actions": [
+            {
+              "type": "draft_reply",
+              "label": "Draft update to Tom",
+              "context": { "thread_id": "thread-002", "subject": "API rate limiting — still no update after 6 weeks" }
+            }
+          ]
+        },
+        {
+          "subject": "Meridian Health needs SOC 2 report by April 30",
+          "sender": "e.frost@linearsync.io",
+          "thread_id": "thread-005",
+          "summary": "Meridian's procurement team needs SOC 2 Type II report by April 30. Missing the deadline blocks their expansion deal.",
+          "urgency": "urgent_action",
+          "actions": [
+            {
+              "type": "draft_reply",
+              "label": "Reply to Elena",
+              "context": { "thread_id": "thread-005" }
+            },
+            {
+              "type": "create_task",
+              "label": "Track SOC 2 deadline",
+              "context": { "thread_id": "thread-005", "title": "Send SOC 2 Type II report to Meridian Health by April 30" }
+            }
+          ]
+        },
+        {
+          "subject": "Sprint 22 Retro — scope creep trend (needs discussion tomorrow)",
+          "sender": "dev.kapoor@linearsync.io",
+          "thread_id": "thread-003",
+          "summary": "Dev wants to add a sprint buffer after 4 of 6 sprints had scope creep from customer escalations. Needs a decision before tomorrow's planning.",
+          "urgency": "needs_input",
+          "actions": [
+            {
+              "type": "draft_reply",
+              "label": "Reply to Dev",
+              "context": { "thread_id": "thread-003" }
+            }
+          ]
+        }
+      ],
+      "needs_input": [
+        {
+          "subject": "Q2 Roadmap — 4 board comments added",
+          "sender": "board@linearsync.io",
+          "thread_id": "thread-008",
+          "summary": "The board wants Enterprise SSO pulled into Q2 from Q3. They've added 4 comments to the deck.",
+          "urgency": "needs_input",
+          "actions": [
+            {
+              "type": "draft_reply",
+              "label": "Reply to board",
+              "context": { "thread_id": "thread-008" }
+            }
+          ]
+        },
+        {
+          "subject": "Loved your ProductCon talk — coffee?",
+          "sender": "c.reyes@notion.so",
+          "thread_id": "thread-007",
+          "summary": "Carlos Reyes (PM at Notion) wants to connect about async-first teams and API scaling.",
+          "urgency": "needs_input",
+          "actions": [
+            {
+              "type": "draft_reply",
+              "label": "Reply",
+              "context": { "thread_id": "thread-007" }
+            }
+          ]
+        }
+      ],
+      "fyi_only": [
+        {
+          "subject": "Customer Interview Notes — Shopify integration team",
+          "sender": "aisha.w@linearsync.io",
+          "thread_id": "thread-006",
+          "summary": "Shopify wants webhook retry logic, better error messages, and bulk import UI. Notes in shared doc.",
+          "urgency": "fyi"
+        },
+        {
+          "subject": "March NPS Results — score dropped to 41 (was 52)",
+          "sender": "analytics@linearsync.io",
+          "thread_id": "thread-004",
+          "summary": "NPS dropped 11 points. Slow export performance mentioned in 18/23 negative responses.",
+          "urgency": "fyi"
+        }
+      ],
+      "can_ignore": [
+        {
+          "subject": "AWS March Bill — $18,420 (↑34% from Feb)",
+          "sender": "billing@aws.amazon.com",
+          "thread_id": "thread-009",
+          "summary": "AWS bill up 34% from February — spike in data transfer costs.",
+          "urgency": "fyi"
+        }
+      ]
+    },
+    "day_at_a_glance": [
+      {
+        "time": "2026-04-10T16:30:00.000Z",
+        "title": "Daily Standup",
+        "event_id": "evt-001",
+        "attendees": ["dev.kapoor@linearsync.io", "maya.p@linearsync.io", "priya.nair@linearsync.io"],
+        "has_notes_doc": false,
+        "prep_note": null,
+        "priority_group": "show_up",
+        "linked_docs": []
+      },
+      {
+        "time": "2026-04-10T18:00:00.000Z",
+        "title": "Acme Corp — Renewal Check-in",
+        "event_id": "evt-002",
+        "attendees": ["priya.nair@linearsync.io", "marcus.webb@acmecorp.com", "sandra.park@acmecorp.com"],
+        "has_notes_doc": true,
+        "prep_note": "Review Apr 8 call notes. You committed to having an eng timeline for the bulk export fix. Acme's health score is 62 and dropping — Sandra has a board meeting May 3.",
+        "priority_group": "needs_prep",
+        "linked_docs": [
+          {
+            "name": "Acme Corp — Renewal Call Notes (Apr 8)",
+            "url": "https://docs.google.com/document/d/drive-003/edit",
+            "type": "notes"
+          },
+          {
+            "name": "Enterprise Customers — Account Health Tracker",
+            "url": "https://docs.google.com/spreadsheets/d/drive-001/edit",
+            "type": "shared_file"
+          }
+        ]
+      }
+    ],
+    "followups": [
+      {
+        "task_id": "followup-001",
+        "title": "Send bulk export fix timeline to Acme Corp",
+        "commitment": "Committed to sharing engineering timeline by Apr 11",
+        "recipient": "marcus.webb@acmecorp.com",
+        "thread_id": "thread-001",
+        "subject": "Acme Corp renewal at risk — bulk export bug",
+        "due": "2026-04-11",
+        "status": "due_today",
+        "days_overdue": 0
+      },
+      {
+        "task_id": "followup-002",
+        "title": "Update Meridian Health on API rate limiting status",
+        "commitment": "Promised an update on API rate limiting roadmap",
+        "recipient": "t.briggs@meridianhealth.com",
+        "thread_id": "thread-002",
+        "subject": "API rate limiting feature request",
+        "due": "2026-04-03",
+        "status": "overdue",
+        "days_overdue": 7
+      },
+      {
+        "task_id": "followup-003",
+        "title": "Send SOC 2 Type II report to Meridian Health procurement",
+        "commitment": "Confirm SOC 2 availability",
+        "recipient": "e.frost@linearsync.io",
+        "thread_id": "thread-005",
+        "subject": "Meridian Health needs SOC 2 report by April 30",
+        "due": "2026-04-30",
+        "status": "upcoming",
+        "days_overdue": 0
+      },
+      {
+        "task_id": "followup-004",
+        "title": "Share sprint buffer decision with Dev before planning",
+        "commitment": "Respond to Dev's sprint buffer proposal from retro",
+        "recipient": "dev.kapoor@linearsync.io",
+        "thread_id": "thread-003",
+        "subject": "Sprint 22 Retro — scope creep trend",
+        "due": "2026-04-10",
+        "status": "due_today",
+        "days_overdue": 0
+      }
+    ]
+  },
+
+  "chat_responses": {
+    "account_health": "Based on the **Enterprise Account Health Tracker** (last updated today), here's the current risk picture:\n\n| Account | ARR | Health | Risk | Renewal |\n|---|---|---|---|---|\n| Acme Corp | $142K | 62 | 🔴 HIGH | May 1 |\n| DataBridge Corp | $38K | 54 | 🔴 HIGH | Apr 28 |\n| Meridian Health | $89K | 78 | 🟡 MEDIUM | Jun 15 |\n\nThe two highest-risk accounts share a common thread: both cite **export performance issues** as their primary pain point. DataBridge Corp's renewal is actually sooner — April 28, 3 days before Acme.",
+
+    "acme_prep": "Here's everything I found across your Drive and email to prep for the Acme Corp call:\n\n**From Apr 8 call notes (Drive):**\n- Bulk export times out on datasets >50k rows\n- Their data team runs nightly exports of 200k+ rows — core to their workflow\n- Sandra Park (CTO) has a board meeting May 3 and needs to show this is resolved\n- You committed to having an eng timeline by April 11\n\n**From the Account Health Sheet:**\n- Health score: 62 (down from 71 last month)\n- 3 open support tickets\n- NPS: 28 (company average is 41)\n\n**Cross-signal from March NPS report:**\n- 18 of 23 NPS detractor responses cited slow export performance\n- Acme's issue is part of a broader pattern affecting multiple accounts\n\n**My recommendation:** Lead with the Sprint 23 commitment for the export fix and a specific date. Don't let the call end without a written timeline you can share with Marcus.",
+
+    "sprint_planning": "Here's a prioritized view of what should go into **Sprint 23**, pulling from the feature request backlog and current account risk:\n\n**Must-have (revenue at risk):**\n1. **Bulk export performance fix** — blocks Acme Corp ($142K, May 1 renewal) and DataBridge ($38K, Apr 28). Also the #1 NPS driver.\n2. **API rate limiting controls** — Meridian Health has been waiting 6 weeks. They've paused 2 customer onboardings. $89K ARR + $280K ARR impact across 5 accounts.\n\n**High value:**\n3. **Webhook retry logic** — requested by Shopify ($210K ARR) from this week's customer interview. 15 votes in backlog.\n\n**Dev's retro suggestion:** Add 15% buffer capacity for escalations — based on 4 of 6 sprints being disrupted. That's roughly 1.3 sprint slots at a 9-person team.\n\nWant me to draft a Sprint 23 planning doc with this breakdown?",
+
+    "nps_summary": "The March NPS report (attached to the analytics email) shows:\n\n- **Overall NPS: 41** (down from 52 in February — an 11-point drop)\n- **Primary driver:** Slow export performance — mentioned in **18 of 23 detractor responses**\n- **Promoters** cited: fast sync speeds, reliable API uptime, responsive support\n\n**Cross-referencing with account health data:**\nThe export performance issue appears in 3 places simultaneously — Acme's renewal call notes, the NPS report, and Meridian's feature request history. This isn't isolated. Fixing Sprint 23's bulk export task should recover multiple NPS detractors and unblock two renewals.",
+
+    "standup": "Here's your standup for today (April 10):\n\n**Yesterday:**\n- Reviewed Acme Corp renewal call notes and flagged bulk export escalation to eng\n- Updated Q2 roadmap deck based on board feedback\n\n**Today:**\n- Daily Standup at 9:30 AM\n- Acme Corp Renewal Check-in at 11 AM — need eng timeline before this\n\n**Blockers:**\n- Waiting on eng estimate for bulk export fix (committed to Acme by today)\n- SOC 2 report availability — need to confirm with legal for Meridian Health\n\n**Overdue follow-ups:**\n- Meridian Health API rate limiting update — 7 days overdue",
+
+    "proactive_draft": "While you were asleep, I handled an urgent request from **Sarah Chen (VP Eng)**:\n\n**What happened at 3:04 AM:**\nSarah emailed saying the board meeting was moved to 9 AM and she needed an infrastructure cost breakdown doc before standup.\n\n**What I did (3:05–3:07 AM):**\n1. Read Sarah's email and identified it as high-urgency (manager + board + doc creation)\n2. Searched Drive and found the Q1 infra cost tracking sheet\n3. Read the cost data — identified the March spike (+34%, $18,420)\n4. Cross-referenced the AWS billing email to confirm the root cause (bulk export egress)\n5. Created a draft doc: *\"Infra Cost Breakdown — Board Meeting Apr 10\"* with full analysis\n6. Prepared a draft reply to Sarah with the doc link and key findings\n\n**The draft reply is ready.** It explains the March cost spike, links to the doc, and offers to make edits before standup. Want me to send it now, or do you want to review first?",
+
+    "infra_cost": "Here's the Q1 infrastructure cost picture I pulled from your tracking sheet:\n\n| Month | Total | Change |\n|---|---|---|\n| January | $14,440 | — |\n| February | $16,200 | +12% |\n| March | **$21,200** | **+31%** |\n\n**Root cause of March spike:**\nAWS data transfer costs tripled — driven by Acme Corp's nightly bulk exports (200K+ rows). S3 egress alone went from $2,100 → $5,800.\n\n**Key finding for the board:**\nThis isn't a runaway cost problem — it's directly tied to the bulk export performance bug. Fix the export efficiency in Sprint 23 and costs return to ~$16K/month. Without the fix, expect $22–24K/month as more enterprise customers onboard.",
+
+    "default": "I can pull together information across your email, calendar, Drive files, and Sheets. Try asking me things like:\n- *\"What did you handle while I was sleeping?\"*\n- *\"What's the status of the Acme renewal?\"*\n- *\"Prep me for the 11 AM call\"*\n- *\"What should go into Sprint 23?\"*\n- *\"Summarize the NPS report\"*\n- *\"What's my standup for today?\"*"
+  },
+
+  "tasks": {
+    "tasks": [
+      {
+        "id": "task-001",
+        "title": "Get eng timeline for bulk export fix (Acme renewal blocker)",
+        "status": "needsAction",
+        "due": "2026-04-10",
+        "listId": "list-work",
+        "listTitle": "Work — High Priority"
+      },
+      {
+        "id": "task-002",
+        "title": "Reply to Meridian Health — API rate limiting update",
+        "status": "needsAction",
+        "due": "2026-04-10",
+        "listId": "list-work",
+        "listTitle": "Work — High Priority"
+      },
+      {
+        "id": "task-003",
+        "title": "Send SOC 2 Type II report to Meridian Health by Apr 30",
+        "status": "needsAction",
+        "due": "2026-04-30",
+        "listId": "list-work",
+        "listTitle": "Work — High Priority"
+      },
+      {
+        "id": "task-004",
+        "title": "Prepare Sprint 23 planning agenda (incl. sprint buffer decision)",
+        "status": "needsAction",
+        "due": "2026-04-11",
+        "listId": "list-work",
+        "listTitle": "Work — High Priority"
+      },
+      {
+        "id": "task-005",
+        "title": "Review board comments on Q2 Roadmap deck (SSO timeline)",
+        "status": "needsAction",
+        "due": "2026-04-12",
+        "listId": "list-work",
+        "listTitle": "Work"
+      },
+      {
+        "id": "task-006",
+        "title": "Respond to Carlos Reyes (Notion PM) — schedule coffee chat",
+        "status": "needsAction",
+        "due": "2026-04-14",
+        "listId": "list-work",
+        "listTitle": "Work"
+      },
+      {
+        "id": "task-007",
+        "title": "Check AWS cost spike — data transfer costs up 34%",
+        "status": "needsAction",
+        "due": "2026-04-15",
+        "listId": "list-work",
+        "listTitle": "Work"
+      }
+    ]
+  }
+}

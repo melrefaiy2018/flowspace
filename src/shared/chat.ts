@@ -1,3 +1,40 @@
+export type { ConversationIndexEntry, ConversationIndex, ConversationOrigin, ConversationUpdate } from '../agent/conversation-index.js';
+export type { ConversationSummary, ConversationSummaryStore, SummarySections } from '../agent/conversation-summary.js';
+
+export interface StructuredThreadBrief {
+  type: 'meeting_prep' | 'email_thread' | 'task' | 'general';
+  entityId?: string;
+  summary: string;
+  context?: Record<string, string>;
+}
+
+const STRUCTURED_BRIEF_TYPES = new Set<StructuredThreadBrief['type']>([
+  'meeting_prep',
+  'email_thread',
+  'task',
+  'general',
+]);
+
+export function parseThreadBrief(raw: string | undefined): StructuredThreadBrief | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.type === 'string' &&
+      STRUCTURED_BRIEF_TYPES.has(parsed.type) &&
+      typeof parsed.summary === 'string'
+    ) {
+      return parsed as StructuredThreadBrief;
+    }
+  } catch {
+    // not JSON — fall through to legacy handling
+  }
+  // Legacy string or malformed JSON → treat the whole raw value as a general summary.
+  return { type: 'general', summary: raw };
+}
+
 export type ToolEventStatus = 'pending' | 'running' | 'completed' | 'error' | 'approval_required';
 export type RunStatus = 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'canceled';
 
@@ -184,6 +221,8 @@ export interface ApprovalRequest {
   fields: ApprovalField[];
   beforePreview?: Record<string, string>;
   afterPreview?: Record<string, string>;
+  /** Original tool args preserved for tools that don't use editable fields (e.g. dynamic tools). */
+  toolArgs?: Record<string, unknown>;
 }
 
 export interface RunRecord {
@@ -196,7 +235,7 @@ export interface RunRecord {
   toolTotal: number;
   toolCompleted: number;
   approvalPendingCount: number;
-  errorCode?: 'auth_expired' | 'rate_limited' | 'tool_timeout' | 'validation_failed' | 'unknown';
+  errorCode?: 'auth_expired' | 'rate_limited' | 'tool_timeout' | 'validation_failed' | 'context_overflow' | 'unknown';
   errorMessage?: string;
   sourceApps: string[];
   messageId?: string;

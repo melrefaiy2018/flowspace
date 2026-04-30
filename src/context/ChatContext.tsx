@@ -29,6 +29,8 @@ export interface Conversation {
   groupId: string;
   threadBrief?: string;
   titleMode?: 'auto' | 'manual';
+  /** Links this conversation to a calendar event by its Google Calendar event ID. */
+  eventId?: string;
 }
 
 export interface ThreadGroup {
@@ -37,13 +39,15 @@ export interface ThreadGroup {
   createdAt: number;
 }
 
-export type ActiveView = 'dashboard' | 'chat' | 'workspace' | 'settings' | 'skills' | 'gmail' | 'drive' | 'calendar' | 'tasks';
+export type ActiveView = 'dashboard' | 'settings' | 'mail' | 'calendar' | 'tasks' | 'workflows' | 'automations';
 
 interface ChatContextValue {
   activeView: ActiveView;
   setActiveView: (view: ActiveView) => void;
   navigateTab: string | null;
   clearNavigateTab: () => void;
+  pendingWorkflowEdit: string | null;
+  setPendingWorkflowEdit: (name: string | null) => void;
   navigateRefresh: boolean;
   clearNavigateRefresh: () => void;
   messages: Message[];
@@ -58,7 +62,7 @@ interface ChatContextValue {
   input: string;
   setInput: (text: string) => void;
   isLoading: boolean;
-  sendMessage: (content?: string, options?: { forceNewChat?: boolean; preserveActiveView?: boolean; displayContent?: string }) => Promise<void>;
+  sendMessage: (content?: string, options?: { forceNewChat?: boolean; preserveActiveView?: boolean; displayContent?: string; threadBrief?: string; eventId?: string }) => Promise<void>;
   stopGeneration: () => void;
   triggerAction: (prompt: string, autoSend: boolean) => void;
   registerInputRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
@@ -80,6 +84,10 @@ interface ChatContextValue {
   undoInboxActionFromAudit: (auditId: string) => Promise<void>;
   dismissApproval: (messageId: string) => void;
   editAssistantMessage: (messageId: string, content: string) => void;
+  /** Get an existing conversation by stable id, or create and switch to a new one. */
+  getOrCreateConversation: (id: string, seed: { title: string; threadBrief?: string; groupId?: string }) => void;
+  /** Returns the most recent conversation linked to a calendar event ID, or null. */
+  findConversationByEventId: (eventId: string) => Conversation | null;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -150,6 +158,7 @@ function loadConversations(keys: ReturnType<typeof storageKeys>): Conversation[]
         groupId: typeof c.groupId === 'string' && c.groupId.trim() ? c.groupId : DEFAULT_THREAD_GROUP_ID,
         threadBrief: typeof c.threadBrief === 'string' ? c.threadBrief : undefined,
         titleMode: c.titleMode === 'manual' ? 'manual' : 'auto',
+        eventId: typeof c.eventId === 'string' ? c.eventId : undefined,
       }));
   } catch {
     return [];
@@ -189,8 +198,14 @@ function upsertRun(runs: RunRecord[], next: RunRecord): RunRecord[] {
 }
 
 function friendlyErrorMessage(error: string): string {
+  // Always log the raw error so debugging doesn't require curl. The friendly
+  // message is intentionally vague to avoid leaking provider internals into
+  // the UI, but the full text lives in the console for developers.
+  // eslint-disable-next-line no-console
+  console.error('[chat] raw error:', error);
   const lowered = error.toLowerCase();
-  if (lowered.includes('auth') || lowered.includes('unauthorized') || lowered.includes('token')) return 'Authentication expired. Please sign in again.';
+  if (lowered.includes('unauthorized') || lowered.includes('401') || lowered.includes('invalid_api_key') || lowered.includes('authentication failed')) return 'Authentication expired. Please sign in again.';
+  if (lowered.includes('n_keep') || lowered.includes('context length') || lowered.includes('context window') || lowered.includes('n_ctx')) return 'The system prompt exceeds this model\'s context window. In LM Studio, load a model with a larger context (8k+), or reduce the context under Model Settings.';
   if (lowered.includes('429') || lowered.includes('rate')) return 'Rate limited by provider. Please retry shortly.';
   if (lowered.includes('timeout') || lowered.includes('timed out')) return 'The request timed out. Try a narrower request.';
   if (lowered.includes('invalid') || lowered.includes('required') || lowered.includes('validation')) return 'The request needs different inputs. Please review and retry.';
@@ -214,10 +229,8 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     const savedView = window.localStorage.getItem(keys.activeView) as ActiveView | null;
-    const validViews: ActiveView[] = ['dashboard', 'chat', 'workspace', 'settings', 'skills', 'gmail', 'drive', 'calendar', 'tasks'];
+    const validViews: ActiveView[] = ['dashboard', 'settings', 'mail', 'calendar', 'tasks', 'workflows'];
     if (savedView && validViews.includes(savedView)) {
-      // Chat is always a side panel now — restore to dashboard instead
-      if (savedView === 'chat') return 'dashboard';
       return savedView;
     }
     return 'dashboard';
@@ -226,6 +239,7 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
   const [isLoading, setIsLoading] = useState(false);
   const [navigateTab, setNavigateTab] = useState<string | null>(null);
   const clearNavigateTab = useCallback(() => setNavigateTab(null), []);
+  const [pendingWorkflowEdit, setPendingWorkflowEdit] = useState<string | null>(null);
   const [navigateRefresh, setNavigateRefresh] = useState(false);
   const clearNavigateRefresh = useCallback(() => setNavigateRefresh(false), []);
   const inputElRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
@@ -414,7 +428,7 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
       return;
     }
     if (event.type === 'navigate') {
-      const validViews = new Set<ActiveView>(['dashboard', 'chat', 'workspace', 'settings', 'skills', 'gmail', 'drive', 'calendar', 'tasks']);
+      const validViews = new Set<ActiveView>(['dashboard', 'settings', 'mail', 'calendar', 'tasks', 'workflows']);
       if (validViews.has(event.view as ActiveView)) {
         setActiveView(event.view as ActiveView);
         if (event.tab) setNavigateTab(event.tab);
@@ -444,7 +458,7 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
     }
   }, [updateConversationMessage]);
 
-  const streamAssistantResponse = useCallback(async (payload: { conversationId: string; sourceMessages: Message[]; assistantId: string; threadBrief?: string }) => {
+  const streamAssistantResponse = useCallback(async (payload: { conversationId: string; sourceMessages: Message[]; assistantId: string; threadBrief?: string; title?: string; eventId?: string }) => {
     const controller = new AbortController();
     streamAbortRef.current = controller;
     try {
@@ -452,7 +466,7 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
         toChatInput(payload.sourceMessages),
         (event) => handleStreamEvent(payload.conversationId, payload.assistantId, event),
         controller.signal,
-        { conversationId: payload.conversationId, sourceMessageId: payload.assistantId, threadBrief: payload.threadBrief },
+        { conversationId: payload.conversationId, sourceMessageId: payload.assistantId, threadBrief: payload.threadBrief, title: payload.title, eventId: payload.eventId },
       );
     } catch (error: any) {
       if (error?.name === 'AbortError') {
@@ -497,7 +511,7 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
     return () => window.clearInterval(interval);
   }, [refreshRuns]);
 
-  const sendMessage = useCallback(async (content?: string, options?: { forceNewChat?: boolean; preserveActiveView?: boolean; displayContent?: string }) => {
+  const sendMessage = useCallback(async (content?: string, options?: { forceNewChat?: boolean; preserveActiveView?: boolean; displayContent?: string; threadBrief?: string; eventId?: string }) => {
     const text = (content ?? input).trim();
     if (!text || isLoading) return;
 
@@ -525,6 +539,8 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
         updatedAt: Date.now(),
         groupId: existingConv?.groupId || currentConversation?.groupId || DEFAULT_THREAD_GROUP_ID,
         titleMode: 'auto',
+        ...(options?.threadBrief ? { threadBrief: options.threadBrief } : {}),
+        ...(options?.eventId ? { eventId: options.eventId } : {}),
       };
       setConversations((prev) => [conv, ...prev]);
       setCurrentConversationId(targetConvId);
@@ -547,13 +563,17 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
 
     setInput('');
     setIsLoading(true);
-    setChatPanelOpen(true);
+    if (!options?.preserveActiveView) {
+      setChatPanelOpen(true);
+    }
 
     await streamAssistantResponse({
       conversationId: targetConvId!,
       sourceMessages,
       assistantId: assistantMessage.id,
-      threadBrief: existingConv?.threadBrief,
+      threadBrief: options?.threadBrief ?? existingConv?.threadBrief,
+      title: existingConv?.title,
+      eventId: options?.eventId ?? existingConv?.eventId,
     });
   }, [currentConversation?.groupId, input, isLoading, streamAssistantResponse]);
 
@@ -665,6 +685,42 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
         ? { ...conversation, threadBrief: trimmed || undefined, updatedAt: Date.now() }
         : conversation
     )));
+  }, []);
+
+  const findConversationByEventId = useCallback((eventId: string): Conversation | null => {
+    return conversationsRef.current
+      .filter((c) => c.eventId === eventId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+  }, []);
+
+  const getOrCreateConversation = useCallback((id: string, seed: { title: string; threadBrief?: string; groupId?: string }) => {
+    const existing = conversationsRef.current.find((c) => c.id === id);
+    if (existing) {
+      // Refresh threadBrief when the underlying item's enrichment changes
+      // (e.g. enrichment lands after the conversation was first created).
+      // Without this, the agent would be prompted with the stale brief.
+      // Title is left alone so user-renamed conversations don't get
+      // clobbered on the next item-derived render.
+      const nextBrief = seed.threadBrief?.trim() || undefined;
+      if (nextBrief !== existing.threadBrief) {
+        setConversations((prev) => prev.map((c) => (
+          c.id === id ? { ...c, threadBrief: nextBrief, updatedAt: Date.now() } : c
+        )));
+      }
+      setCurrentConversationId(id);
+    } else {
+      const conv: Conversation = {
+        id,
+        title: seed.title,
+        messages: [],
+        updatedAt: Date.now(),
+        groupId: seed.groupId ?? DEFAULT_THREAD_GROUP_ID,
+        titleMode: 'manual',
+        ...(seed.threadBrief ? { threadBrief: seed.threadBrief } : {}),
+      };
+      setConversations((prev) => [conv, ...prev]);
+      setCurrentConversationId(id);
+    }
   }, []);
 
   const triggerAction = useCallback((prompt: string, autoSend: boolean) => {
@@ -797,6 +853,8 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
         setActiveView,
         navigateTab,
         clearNavigateTab,
+        pendingWorkflowEdit,
+        setPendingWorkflowEdit,
         navigateRefresh,
         clearNavigateRefresh,
         messages,
@@ -833,6 +891,8 @@ export function ChatProvider({ children, userEmail }: { children: ReactNode; use
         undoInboxActionFromAudit,
         dismissApproval,
         editAssistantMessage,
+        getOrCreateConversation,
+        findConversationByEventId,
       }}
     >
       {children}

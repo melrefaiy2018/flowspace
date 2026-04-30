@@ -1,6 +1,16 @@
 node_modules/
 build/
 dist/
+
+# Personal knowledge base (tracked separately)
+llm-kb/.venv/
+llm-kb/scripts/state.json
+llm-kb/scripts/last-flush.json
+llm-kb/scripts/flush.log
+llm-kb/scripts/compile.log
+llm-kb/scripts/session-flush-*.md
+llm-kb/scripts/flush-context-*.md
+llm-kb/reports/
 dist-server/
 build-artifacts/
 coverage/
@@ -17,6 +27,11 @@ coverage/
 .memory/
 .llm-settings.json
 .dynamic-tools.json
+.workflow-trigger-state.json
+.tool-invocation-log*.json
+.workflow-proposals*.json
+.workflow-proposal-samples*.json
+.synthesizer-settings*.json
 src-tauri/resources/client_secret.json
 src-tauri/resources/gws
 src-tauri/resources/node
@@ -88,6 +103,18 @@ node_modules
 .gstack/
 .claude
 .opencode
-.inbox-action-log.moelrefaiy_gmail_com.json
-.persona.moelrefaiy_gmail_com.json
-.quick-actions.melrefaiy_utexas_edu.json
+# Per-user runtime state files (any account)
+.inbox-action-log.*.json
+.persona.*.json
+.quick-actions.*.json
+.briefing-cache.*.json
+.importance-preferences.*.json
+.followup-state.*.json
+llm-kb
+.claude
+.gmail-enrichment*.json
+
+# Build artifacts and local tooling — never commit
+releases/
+.obsidian/
+staged-drafts.json

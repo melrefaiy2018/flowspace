@@ -171,11 +171,12 @@ export default function AttentionPanel({
                     {item.description}
                   </div>
 
-                  {/* Actions */}
-                  <div className="relative pl-[44px] flex flex-wrap items-center gap-2">
+                  {/* Actions — primary first, classification separated */}
+                  <div className="relative pl-[44px] flex items-center gap-2 flex-wrap">
+                    {/* Primary action */}
                     <button
                       onClick={() => handleAction(item)}
-                      className="flex items-center gap-1 text-[11px] font-medium px-[10px] py-1.5 rounded-[6px] cursor-pointer hover:brightness-125 active:translate-y-px transition-all min-h-[32px]"
+                      className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-[6px] cursor-pointer hover:brightness-125 active:translate-y-px transition-all"
                       style={{
                         background: colors.bg,
                         border: `1px solid ${colors.border}`,
@@ -189,35 +190,29 @@ export default function AttentionPanel({
                     </button>
                     <button
                       onClick={() => handleDelegate(item)}
-                      className="flex items-center gap-1 text-[11px] font-medium px-[10px] py-1.5 rounded-[6px] cursor-pointer bg-[var(--surface3)] border border-[var(--border2)] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[var(--text-faint)] transition-all min-h-[32px]"
+                      className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-[6px] cursor-pointer bg-[var(--surface3)] border border-[var(--border2)] text-[var(--text-dim)] hover:text-[var(--text)] hover:border-[var(--text-faint)] transition-all"
                       aria-label={`Delegate "${item.title}" to ${AGENT_NAME}`}
                     >
                       <Sparkles size={10} aria-hidden="true" />
-                      Delegate
+                      Ask agent
                     </button>
+                    {/* Classification — visually separated */}
+                    <span className="w-px h-4 bg-[var(--border2)] mx-1 shrink-0" aria-hidden="true" />
                     <button
                       onClick={() => onIgnore(feedbackTarget)}
                       disabled={pending}
-                      aria-label={`Ignore: ${item.title}`}
-                      className="text-[11px] font-medium px-[10px] py-1.5 rounded-[6px] cursor-pointer bg-[var(--surface3)] border border-[var(--border2)] text-[var(--text-faint)] hover:text-[var(--text-dim)] transition-all disabled:opacity-50 min-h-[32px]"
+                      aria-label={`Dismiss: ${item.title}`}
+                      className="text-[11px] px-2.5 py-1.5 rounded-[6px] cursor-pointer text-[var(--text-faint)] hover:text-[var(--text-dim)] transition-all disabled:opacity-50"
                     >
-                      Ignore
-                    </button>
-                    <button
-                      onClick={() => onImportant(feedbackTarget)}
-                      disabled={pending}
-                      aria-label={`Mark important: ${item.title}`}
-                      className="text-[11px] font-medium px-[10px] py-1.5 rounded-[6px] cursor-pointer bg-[var(--surface3)] border border-[var(--green-border)] text-[var(--green)] hover:brightness-110 transition-all disabled:opacity-50 min-h-[32px]"
-                    >
-                      Important
+                      Dismiss
                     </button>
                     <button
                       onClick={() => onNotImportant(feedbackTarget)}
                       disabled={pending}
-                      aria-label={`Mark not important: ${item.title}`}
-                      className="text-[11px] font-medium px-[10px] py-1.5 rounded-[6px] cursor-pointer bg-[var(--surface3)] border border-[var(--border2)] text-[var(--text-faint)] hover:text-[var(--text)] transition-all disabled:opacity-50 min-h-[32px]"
+                      aria-label={`Not relevant: ${item.title}`}
+                      className="text-[11px] px-2.5 py-1.5 rounded-[6px] cursor-pointer text-[var(--text-faint)] hover:text-[var(--text-dim)] transition-all disabled:opacity-50"
                     >
-                      Not important
+                      Not relevant
                     </button>
                   </div>
                   {feedbackError && (
@@ -229,9 +224,6 @@ export default function AttentionPanel({
               );
             })}
 
-            <div className="py-2 text-center text-[11px] text-[var(--text-faint)] italic">
-              Nothing else needs your attention today
-            </div>
           </>
         )}
       </div>

@@ -90,6 +90,12 @@ All endpoints use a 60-second in-memory cache. Key routes:
 - `chat.ts` — OpenAI-compatible client with configurable provider (any OpenAI-compatible endpoint, Anthropic, or Claude Code CLI). Implements a tool-calling loop (max 5 rounds).
 - `tools.ts` — 23 tool definitions: 14 core tools (search_drive, send_email, create_calendar_event, etc.), 4 workflow tools (standup_report, meeting_prep, weekly_digest, email_to_task), and 9 gws skill-based tools split into two tiers. Tier 1: calendar_agenda (rich agenda with attendees/linked docs), gmail_triage (AI-bucketed inbox), sheets_read (cell ranges), docs_write (append/replace). Tier 2: sheets_append, drive_upload, review_overdue_tasks, save_email_to_doc. Write tools (docs_write, sheets_append, drive_upload, save_email_to_doc) go through the approval flow. All tools execute via `gws` CLI subprocess (`execFile`, not shell) with an access token passed via env var.
 
+### Workflow scheduler (src/agent/)
+
+- `workflow-scheduler.ts` polls Gmail per-workflow using `setInterval` when a workflow has `trigger.enabled: true`. Runs `executeDynamicTool` with `{ autoApprove: true }` for safe actions only (`apply_label_to_threads`, `archive_email_threads`, `restore_email_threads`, `mark_threads_read`, `mute_email_threads`). Destructive actions remain approval-gated.
+- `workflow-trigger-state.ts` persists processed message IDs (rolling 500), last poll timestamps, and failures (last 20) in `.workflow-trigger-state.json` in `DATA_DIR` using atomic writes.
+- `AutomatePanel.tsx` (per-workflow) and `AutomationsPage.tsx` (sidebar tab) surface trigger config, status, and failure UI. API endpoints: `PATCH/GET /api/dynamic-tools/:name/trigger`, `POST …/retrigger`, `DELETE …/failures`, `GET /triggers/all`.
+
 ### Frontend (src/)
 
 - **Entry**: `main.tsx` → `App.tsx` — auth gate (shows `SignInScreen` until authenticated, then `AppInner`)
@@ -120,3 +126,14 @@ Google auth is handled by the gws CLI — no `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_S
 - Vitest + @vitest/coverage-v8 for unit testing
 - In-memory cache (server.ts), Google Tasks API, `.followup-state.json` in DATA_DIR
 - JSON files (`.gws-credentials.json`, `.tokens.json`) in `~/Library/Application Support/FlowSpace/`
+- TypeScript (Node.js 20+, React 19) + Express.js, googleapis, google-auth-library, motion (Framer Motion), Lucide React, Vites (001-openclaw-memory-agent)
+- JSON files in DATA_DIR (`~/Library/Application Support/FlowSpace` in production, project root in dev). Atomic write pattern (temp file + rename). (001-openclaw-memory-agent)
+- TypeScript 5.x on Node.js 20+ (backend) and React 19 (frontend) + Express.js, googleapis + google-auth-library, Vite 6, Tailwind CSS v4, Framer Motion (motion), Lucide React. LLM calls go through `createLLMClient()` (src/agent/llm-client.ts:20-40), which supports Anthropic, Claude Code, Codex, and OpenAI-compatible providers — no new LLM dependency added. (004-gmail-tab-v1)
+- JSON files in `DATA_DIR` (`~/Library/Application Support/FlowSpace/` in prod, project root in dev). New file `.gmail-enrichment.{accountKey}.json` follows the same scoping pattern as `.followup-state.{accountKey}.json` via `getScopedDataPath()` (server.ts:463-469). In-memory `Map<string, ThreadBrief>` cache for thread briefs (session-scoped, cleared on server restart). (004-gmail-tab-v1)
+- TypeScript on Node.js 20+, React 19 + `googleapis` (Gmail API), Express, Vites (005-harness-improvements)
+- JSON files in `DATA_DIR` (atomic write, same pattern as `.dynamic-tools.json`) (005-harness-improvements)
+- TypeScript 5.x on Node.js 20+ (server) and React 19 (frontend), per Constitution stack lock. + Express (existing), Vitest (existing), `crypto` (Node built-in for SHA-1), Tailwind v4 + Lucide React (existing UI). No new runtime dependencies. (007-workflow-synthesizer)
+- JSON files in `DATA_DIR`, scoped per Google account via `getScopedDataPath()`, written atomically (temp + rename). Three new files: `.tool-invocation-log.{accountKey}.json`, `.workflow-proposals.{accountKey}.json`, `.workflow-proposal-samples.{accountKey}.json`. (007-workflow-synthesizer)
+
+## Recent Changes
+- 001-openclaw-memory-agent: Added TypeScript (Node.js 20+, React 19) + Express.js, googleapis, google-auth-library, motion (Framer Motion), Lucide React, Vites

@@ -17,6 +17,7 @@ vi.mock('../../services/api', () => ({
     markThreadRead: vi.fn(),
     archiveThread: vi.fn(),
     trashThread: vi.fn(),
+    getThreadEnrichments: vi.fn(),
   },
 }));
 
@@ -72,6 +73,14 @@ beforeEach(() => {
   vi.mocked(api.getGmailLabels).mockResolvedValue({ labels: [] });
   vi.mocked(api.getGmailThreads).mockResolvedValue({ threads: [], nextPageToken: null, resultSizeEstimate: 0 });
   vi.mocked(api.getInboxActionHistory).mockResolvedValue({ actions: [] });
+  // Default enrichment: resolves immediately with empty map
+  vi.mocked(api.getThreadEnrichments).mockResolvedValue({
+    enrichments: [],
+    failed: [],
+    cacheStats: { hits: 0, misses: 0, totalRequested: 0 },
+    bucketCounts: { needs_reply: 0, waiting: 0, quick_wins: 0, reference_fyi: 0 },
+    durationMs: 10,
+  });
 });
 
 describe('useGmailPage', () => {
@@ -412,5 +421,242 @@ describe('useGmailPage', () => {
 
     // Labels fetched twice: initial + refresh
     expect(api.getGmailLabels).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T016: Parallel enrichment fetch behaviour
+// ---------------------------------------------------------------------------
+describe('useGmailPage — T016 parallel enrichment fetch', () => {
+  it('(a+c) thread list populates before enrichment resolves', async () => {
+    const thread = makeThread();
+    vi.mocked(api.getGmailThreads).mockResolvedValue({ threads: [thread], nextPageToken: null, resultSizeEstimate: 1 });
+
+    // Enrichment is a slow promise that we control
+    let resolveEnrichment!: (v: any) => void;
+    const enrichmentPromise = new Promise<any>((resolve) => { resolveEnrichment = resolve; });
+    vi.mocked(api.getThreadEnrichments).mockReturnValue(enrichmentPromise);
+
+    const { result } = renderHook(() => useGmailPage());
+
+    // Wait for the main list to be loaded (loading = false, threads populated)
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // (a) Thread list is populated
+    expect(result.current.threads).toHaveLength(1);
+    expect(result.current.threads[0].id).toBe('thread-1');
+
+    // (c) Enrichment map is still empty (enrichment not resolved yet)
+    expect(result.current.enrichmentMap.size).toBe(0);
+    expect(result.current.fallbackReason).toBeNull();
+
+    // Now resolve enrichment
+    await act(async () => {
+      resolveEnrichment({
+        enrichments: [{
+          threadId: 'thread-1',
+          priority: 'high',
+          recommendedAction: 'draft_reply',
+          whyItMatters: 'Reply needed.',
+          effortMinutes: '5',
+          bucket: 'needs_reply',
+        }],
+        failed: [],
+        cacheStats: { hits: 0, misses: 1, totalRequested: 1 },
+        bucketCounts: { needs_reply: 1, waiting: 0, quick_wins: 0, reference_fyi: 0 },
+        durationMs: 800,
+      });
+    });
+
+    // (b) Enrichment map now populated
+    await waitFor(() => expect(result.current.enrichmentMap.size).toBe(1));
+    expect(result.current.enrichmentMap.get('thread-1')?.priority).toBe('high');
+  });
+
+  it('enrichmentStatus transitions idle → loading → ready on success', async () => {
+    const thread = makeThread();
+    vi.mocked(api.getGmailThreads).mockResolvedValue({ threads: [thread], nextPageToken: null, resultSizeEstimate: 1 });
+
+    let resolveEnrichment!: (v: any) => void;
+    const enrichmentPromise = new Promise<any>((resolve) => { resolveEnrichment = resolve; });
+    vi.mocked(api.getThreadEnrichments).mockReturnValue(enrichmentPromise);
+
+    const { result } = renderHook(() => useGmailPage());
+
+    // While enrichment is in flight, status is 'loading'
+    await waitFor(() => expect(result.current.enrichmentStatus).toBe('loading'));
+    expect(result.current.fallbackReason).toBeNull();
+
+    await act(async () => {
+      resolveEnrichment({
+        enrichments: [{ threadId: 'thread-1', priority: 'high', recommendedAction: 'draft_reply', whyItMatters: 'x', effortMinutes: '5', bucket: 'needs_reply' }],
+        failed: [],
+        cacheStats: { hits: 0, misses: 1, totalRequested: 1 },
+        bucketCounts: { needs_reply: 1, waiting: 0, quick_wins: 0, reference_fyi: 0 },
+        durationMs: 100,
+      });
+    });
+
+    await waitFor(() => expect(result.current.enrichmentStatus).toBe('ready'));
+  });
+
+  it('enrichmentStatus transitions to failed when enrichment rejects', async () => {
+    const thread = makeThread();
+    vi.mocked(api.getGmailThreads).mockResolvedValue({ threads: [thread], nextPageToken: null, resultSizeEstimate: 1 });
+    vi.mocked(api.getThreadEnrichments).mockRejectedValue(new Error('boom'));
+
+    const { result } = renderHook(() => useGmailPage());
+
+    await waitFor(() => expect(result.current.enrichmentStatus).toBe('failed'));
+    expect(result.current.fallbackReason).toBe('boom');
+  });
+
+  it('(d) on enrichment failure, map stays empty and fallbackReason is set', async () => {
+    const thread = makeThread();
+    vi.mocked(api.getGmailThreads).mockResolvedValue({ threads: [thread], nextPageToken: null, resultSizeEstimate: 1 });
+    vi.mocked(api.getThreadEnrichments).mockRejectedValue(new Error('enrichment_timeout'));
+
+    const { result } = renderHook(() => useGmailPage());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.fallbackReason).not.toBeNull());
+
+    expect(result.current.enrichmentMap.size).toBe(0);
+    expect(result.current.fallbackReason).toBe('enrichment_timeout');
+  });
+
+  it('(e) invalidateLocalEnrichment removes the entry from the map', async () => {
+    const thread = makeThread();
+    vi.mocked(api.getGmailThreads).mockResolvedValue({ threads: [thread], nextPageToken: null, resultSizeEstimate: 1 });
+    vi.mocked(api.getThreadEnrichments).mockResolvedValue({
+      enrichments: [{
+        threadId: 'thread-1',
+        priority: 'high',
+        recommendedAction: 'draft_reply',
+        whyItMatters: 'Reply.',
+        effortMinutes: '5',
+        bucket: 'needs_reply',
+      }],
+      failed: [],
+      cacheStats: { hits: 0, misses: 1, totalRequested: 1 },
+      bucketCounts: { needs_reply: 1, waiting: 0, quick_wins: 0, reference_fyi: 0 },
+      durationMs: 100,
+    });
+
+    const { result } = renderHook(() => useGmailPage());
+
+    await waitFor(() => expect(result.current.enrichmentMap.size).toBe(1));
+
+    act(() => {
+      result.current.invalidateLocalEnrichment('thread-1');
+    });
+
+    expect(result.current.enrichmentMap.size).toBe(0);
+    expect(result.current.enrichmentMap.has('thread-1')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectNextInQueue
+// ---------------------------------------------------------------------------
+describe('useGmailPage — selectNextInQueue', () => {
+  /**
+   * Helper: build three threads in needs_reply + one in waiting, with matching
+   * enrichment entries so assignBucketsFromEnrichment places them correctly.
+   */
+  function setupThreeNeedsReplyOneWaiting() {
+    const t1 = makeThread({ id: 'nr-1' });
+    const t2 = makeThread({ id: 'nr-2' });
+    const t3 = makeThread({ id: 'nr-3' });
+    const w1 = makeThread({ id: 'w-1' });
+
+    vi.mocked(api.getGmailThreads).mockResolvedValue({
+      threads: [t1, t2, t3, w1],
+      nextPageToken: null,
+      resultSizeEstimate: 4,
+    });
+    vi.mocked(api.getThreadEnrichments).mockResolvedValue({
+      enrichments: [
+        { threadId: 'nr-1', priority: 'high', recommendedAction: 'draft_reply', whyItMatters: 'a', effortMinutes: '5', bucket: 'needs_reply' },
+        { threadId: 'nr-2', priority: 'high', recommendedAction: 'draft_reply', whyItMatters: 'b', effortMinutes: '5', bucket: 'needs_reply' },
+        { threadId: 'nr-3', priority: 'high', recommendedAction: 'draft_reply', whyItMatters: 'c', effortMinutes: '5', bucket: 'needs_reply' },
+        { threadId: 'w-1',  priority: 'medium', recommendedAction: 'nudge', whyItMatters: 'd', effortMinutes: '5', bucket: 'waiting' },
+      ],
+      failed: [],
+      cacheStats: { hits: 0, misses: 4, totalRequested: 4 },
+      bucketCounts: { needs_reply: 3, waiting: 1, quick_wins: 0, reference_fyi: 0 },
+      durationMs: 10,
+    });
+    vi.mocked(api.getGmailThread).mockImplementation((id) => Promise.resolve(makeThreadDetail({ id })));
+    vi.mocked(api.markThreadRead).mockResolvedValue({ success: true });
+  }
+
+  it('selectNextInQueue advances to the 2nd thread when selection is the 1st in needs_reply', async () => {
+    setupThreeNeedsReplyOneWaiting();
+    const { result } = renderHook(() => useGmailPage());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.enrichmentMap.size).toBe(4));
+
+    // Select the first needs_reply thread
+    await act(async () => { await result.current.selectThread('nr-1'); });
+    expect(result.current.selectedThread?.id).toBe('nr-1');
+
+    // Advance to next
+    await act(async () => { result.current.selectNextInQueue(); });
+
+    // Should now be the second needs_reply thread
+    expect(result.current.selectedThread?.id).toBe('nr-2');
+  });
+
+  it('selectNextInQueue advances to first waiting thread when at the last needs_reply thread', async () => {
+    setupThreeNeedsReplyOneWaiting();
+    const { result } = renderHook(() => useGmailPage());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.enrichmentMap.size).toBe(4));
+
+    // Select the last needs_reply thread
+    await act(async () => { await result.current.selectThread('nr-3'); });
+    expect(result.current.selectedThread?.id).toBe('nr-3');
+
+    // Advance to next
+    await act(async () => { result.current.selectNextInQueue(); });
+
+    // Should advance to first waiting thread
+    expect(result.current.selectedThread?.id).toBe('w-1');
+  });
+
+  it('selectNextInQueue deselects when at the last thread in all buckets', async () => {
+    // Only one thread — the last in all queues
+    vi.mocked(api.getGmailThreads).mockResolvedValue({
+      threads: [makeThread({ id: 'solo' })],
+      nextPageToken: null,
+      resultSizeEstimate: 1,
+    });
+    vi.mocked(api.getThreadEnrichments).mockResolvedValue({
+      enrichments: [
+        { threadId: 'solo', priority: 'high', recommendedAction: 'draft_reply', whyItMatters: 'x', effortMinutes: '5', bucket: 'needs_reply' },
+      ],
+      failed: [],
+      cacheStats: { hits: 0, misses: 1, totalRequested: 1 },
+      bucketCounts: { needs_reply: 1, waiting: 0, quick_wins: 0, reference_fyi: 0 },
+      durationMs: 10,
+    });
+    vi.mocked(api.getGmailThread).mockResolvedValue(makeThreadDetail({ id: 'solo' }));
+    vi.mocked(api.markThreadRead).mockResolvedValue({ success: true });
+
+    const { result } = renderHook(() => useGmailPage());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.enrichmentMap.size).toBe(1));
+
+    await act(async () => { await result.current.selectThread('solo'); });
+    expect(result.current.selectedThread?.id).toBe('solo');
+
+    act(() => { result.current.selectNextInQueue(); });
+
+    // No next item — should deselect
+    expect(result.current.selectedThread).toBeNull();
   });
 });

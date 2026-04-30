@@ -1,18 +1,19 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Inbox, Search, Sparkles, X, PanelLeftClose, MailOpen, ShieldCheck, RefreshCw, Bookmark } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useResizablePane } from '../hooks/useResizablePane';
+import { Search, X, RefreshCw, Bookmark, List } from 'lucide-react';
 import { useGmailPage } from '../hooks/useGmailPage';
 import { useChatContext } from '../context/ChatContext';
 import { buildGmailAgentPrompt, gmailAgentDisplayText, type GmailAgentAction } from '../lib/gmail-agent';
-import { triageThreads } from '../lib/triage';
+import { workItemFromGmailThread } from '../lib/work-item';
+import type { WorkItem } from '../lib/work-item';
+import type { SecondaryAction } from '../lib/gmail-work-registry';
 import LabelFilter from '../components/gmail/LabelFilter';
-import ThreadList from '../components/gmail/ThreadList';
-import ThreadReader from '../components/gmail/ThreadReader';
-import GmailTriageView, { type CustomCategory } from '../components/gmail/GmailTriageView';
-import TriageAgentBar from '../components/gmail/TriageAgentBar';
+import SmartViewUnavailableBanner from '../components/gmail/SmartViewUnavailableBanner';
+import EnrichmentProgressBanner from '../components/gmail/EnrichmentProgressBanner';
+import BucketedThreadList from '../components/gmail/BucketedThreadList';
 import SavedThreadList from '../components/gmail/SavedThreadList';
-import { api as apiService, type GmailThreadDetail, type SavedEmail } from '../services/api';
-
-type GmailView = 'inbox' | 'triage' | 'saved';
+import GmailWorkspace from '../components/gmail/workspace/GmailWorkspace';
+import { type GmailThreadDetail, type SavedEmail } from '../services/api';
 
 export default function GmailPage({
   accountKey,
@@ -35,19 +36,18 @@ export default function GmailPage({
   const { sendMessage, clearNavigateTab, navigateRefresh, clearNavigateRefresh } = useChatContext();
   const [searchInput, setSearchInput] = useState('');
   const [showActionDetails, setShowActionDetails] = useState(false);
-  const [activeTab, setActiveTab] = useState<GmailView>(
-    initialTab === 'triage' ? 'triage' : initialTab === 'saved' ? 'saved' : 'inbox'
+  const [showRawInbox, setShowRawInbox] = useState<boolean>(
+    () => typeof localStorage !== 'undefined' && localStorage.getItem('flowspace.gmail.showRawInbox') === 'true',
   );
-  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
-  const [aiSortLoading, setAiSortLoading] = useState(false);
+  const [savedOpen, setSavedOpen] = useState(false);
 
-  // Switch tab when navigated from agent, then clear the hint
+  // T025: Track mount time for first-paint telemetry
+  const mountTime = useRef(typeof performance !== 'undefined' ? performance.now() : 0);
+
+  // initialTab === 'triage' or 'saved' are now no-ops (tab removed in Phase A)
+  // clear the navigation hint so it doesn't accumulate
   useEffect(() => {
-    if (initialTab === 'triage') {
-      setActiveTab('triage');
-      clearNavigateTab();
-    } else if (initialTab === 'saved') {
-      setActiveTab('saved');
+    if (initialTab === 'triage' || initialTab === 'saved') {
       clearNavigateTab();
     }
   }, [initialTab, clearNavigateTab]);
@@ -64,11 +64,25 @@ export default function GmailPage({
 
   useEffect(() => {
     if (!initialThreadId) return;
-    if (initialTab !== 'saved') setActiveTab('inbox');
     void selectThread(initialThreadId).finally(() => {
       onInitialThreadHandled?.();
     });
-  }, [selectThread, initialThreadId, initialThreadNonce, onInitialThreadHandled, initialTab]);
+  }, [selectThread, initialThreadId, initialThreadNonce, onInitialThreadHandled]);
+
+  // T025: Emit gmail-interactive telemetry on first successful paint
+  const telemetrySent = useRef(false);
+  useEffect(() => {
+    if (telemetrySent.current) return;
+    if (gmail.loading) return;
+    if (gmail.threads.length === 0 && !gmail.error) return;
+    telemetrySent.current = true;
+    const durationMs = typeof performance !== 'undefined' ? performance.now() - mountTime.current : 0;
+    void fetch('/api/telemetry/gmail-interactive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ durationMs }),
+    }).catch(() => {/* best-effort — telemetry failure must not break the UI */});
+  }, [gmail.loading, gmail.threads.length, gmail.error]);
 
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -87,232 +101,205 @@ export default function GmailPage({
     void sendMessage(prompt, { forceNewChat: true, preserveActiveView, displayContent });
   }, [sendMessage]);
 
-  const handleTriageAgentAction = useCallback((prompt: string, displayContent: string) => {
-    const preserveActiveView = typeof window !== 'undefined' ? window.innerWidth >= 1024 : true;
-    void sendMessage(prompt, { forceNewChat: true, preserveActiveView, displayContent });
-  }, [sendMessage]);
+  const handleToggleRawInbox = useCallback(() => {
+    setShowRawInbox((prev) => {
+      const next = !prev;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('flowspace.gmail.showRawInbox', String(next));
+      }
+      return next;
+    });
+  }, []);
 
-  const handleAISort = useCallback(async () => {
-    setAiSortLoading(true);
-    try {
-      const result = await apiService.aiTriage([...gmail.threads]);
-      const newCategories: CustomCategory[] = result.categories.map((cat, i) => ({
-        id: `ai-${Date.now()}-${i}`,
-        label: cat.label,
-        threadIds: cat.threadIds,
-      }));
-      setCustomCategories(newCategories);
-    } catch (err: unknown) {
-      console.error('AI triage failed:', err instanceof Error ? err.message : err);
-    } finally {
-      setAiSortLoading(false);
+  // Build a WorkItem from the currently selected thread + enrichment
+  const workItem: WorkItem | null = useMemo(() => {
+    if (!gmail.selectedThread) return null;
+    const threadSummary = gmail.threads.find((t) => t.id === gmail.selectedThread!.id);
+    if (!threadSummary) return null;
+    const enrichment = gmail.enrichmentMap.get(gmail.selectedThread.id);
+    return workItemFromGmailThread(threadSummary, enrichment);
+  }, [gmail.selectedThread, gmail.enrichmentMap, gmail.threads]);
+
+  // Workspace action handlers
+  const handlePrimaryAction = useCallback((_item: WorkItem) => {
+    // Panes handle their own primary behavior via onAgentAction.
+    // This handler is a safe no-op at the workspace header level for v1.
+    // Commit 6 will wire completion state here.
+  }, []);
+
+  const handleSecondaryAction = useCallback((item: WorkItem, kind: string) => {
+    if (!gmail.selectedThread) return;
+    const thread = gmail.selectedThread;
+    switch (kind as SecondaryAction['kind']) {
+      case 'archive':
+        void gmail.archive(item.source.threadId);
+        break;
+      case 'discuss':
+        handleAgentAction(thread, 'ask_agent');
+        break;
+      case 'unsubscribe':
+        handleAgentAction(thread, 'ask_agent', 'Unsubscribe me from this sender');
+        break;
+      case 'snooze':
+        handleAgentAction(thread, 'ask_agent', 'Snooze this thread');
+        break;
+      case 'decline':
+        handleAgentAction(thread, 'decline');
+        break;
+      case 'delegate':
+        handleAgentAction(thread, 'delegate');
+        break;
     }
-  }, [gmail.threads]);
+  }, [gmail, handleAgentAction]);
 
-  const handleAddCategory = useCallback((label: string) => {
-    setCustomCategories((prev) => [...prev, { id: `custom-${Date.now()}`, label, threadIds: [] }]);
-  }, []);
+  const handleWorkspaceAgentAction = useCallback((item: WorkItem, action: GmailAgentAction, question?: string) => {
+    if (!gmail.selectedThread) return;
+    handleAgentAction(gmail.selectedThread, action, question);
+  }, [gmail.selectedThread, handleAgentAction]);
 
-  const handleMoveThread = useCallback((threadId: string, categoryId: string) => {
-    setCustomCategories((prev) =>
-      prev.map((cat) => {
-        // Remove from any custom category it's currently in
-        const filtered = cat.threadIds.filter((id) => id !== threadId);
-        // Add to the target category
-        if (cat.id === categoryId) {
-          return { ...cat, threadIds: [...filtered, threadId] };
-        }
-        return { ...cat, threadIds: filtered };
-      }),
-    );
-  }, []);
+  const handleDirectAction = useCallback((kind: 'archive' | 'unsubscribe', threadId: string) => {
+    if (kind === 'archive') {
+      void gmail.archive(threadId);
+    } else if (kind === 'unsubscribe') {
+      if (gmail.selectedThread) {
+        handleAgentAction(gmail.selectedThread, 'ask_agent', 'Unsubscribe me from this sender');
+      }
+    }
+  }, [gmail, handleAgentAction]);
 
-  const handleTriageAskAgent = useCallback((threadId: string) => {
-    const thread = gmail.threads.find((t) => t.id === threadId);
-    if (!thread) return;
-    const prompt = `I'm looking at email thread "${thread.subject}" from ${thread.from}. Snippet: "${thread.snippet}". Help me decide what to do with this email — should I reply, archive, schedule a follow-up, or take another action?`;
-    const preserveActiveView = typeof window !== 'undefined' ? window.innerWidth >= 1024 : true;
-    void sendMessage(prompt, { forceNewChat: true, preserveActiveView, displayContent: `Help me with "${thread.subject}"` });
-  }, [gmail.threads, sendMessage]);
-
-  // Categorize loaded threads for triage view
-  const triage = useMemo(() => triageThreads(gmail.threads), [gmail.threads]);
+  const queuePane = useResizablePane({
+    storageKey: 'flowspace.gmail.queueWidth',
+    defaultWidth: 300,
+    minWidth: 240,
+    maxWidth: 560,
+  });
 
   const selectedCount = gmail.selectedThreadIds.length;
   const latestHistory = gmail.actionHistory[0] ?? null;
-  const unreadCount = gmail.threads.filter((thread) => thread.unread).length;
   const bulkActionButton = 'rounded-[10px] border px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-40 cursor-pointer';
   const secondaryToolbarButton = 'rounded-[10px] border border-[var(--border)] bg-black/10 px-2.5 py-1.5 text-[11px] font-medium text-[var(--text-dim)] transition-colors hover:border-white/10 hover:text-[var(--text)] cursor-pointer';
 
   return (
-    <div className="flex h-full bg-[linear-gradient(180deg,var(--surface-soft),var(--bg))]">
+    <div className="flex h-full min-w-0 overflow-hidden bg-[linear-gradient(180deg,var(--surface-soft),var(--bg))]">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-[var(--border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]">
-          <div className="border-b border-[var(--border)] px-4 py-2">
-            <div className="mx-auto flex max-w-[1720px] items-center gap-2">
+        {/* Top context bar: search anchored left, label tabs as primary nav, utility icons right */}
+        <div className="shrink-0 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
+          <div className="flex items-stretch gap-0 px-4 h-14">
+            {/* Search — quiet, left-anchored */}
+            <form onSubmit={handleSearch} className="flex shrink-0 items-center gap-2 w-[220px] mr-4 border-r border-[var(--border)] pr-4">
+              <Search size={13} className="shrink-0 text-[var(--text-faint)] opacity-50" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search mail..."
+                className="min-w-0 flex-1 bg-transparent text-[12px] text-[var(--text-dim)] placeholder:text-[var(--text-faint)] placeholder:opacity-50 outline-none"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </form>
+
+            {/* Label tab strip — dominant, stretches to fill */}
+            <div className="min-w-0 flex-1 overflow-x-auto scrollbar-none">
+              <LabelFilter
+                labels={gmail.labels}
+                activeLabel={gmail.activeLabel}
+                onSelect={gmail.setLabel}
+              />
+            </div>
+
+            {/* Utility icon row — receded, right-anchored */}
+            <div className="flex items-center gap-1 shrink-0 pl-3 border-l border-[var(--border)] ml-3">
+              {/* Refresh */}
               <button
                 type="button"
-                onClick={() => setActiveTab('inbox')}
-                className={`flex items-center gap-1.5 rounded-[12px] border px-4 py-2 text-[14px] font-semibold transition ${
-                  activeTab === 'inbox'
-                    ? 'border-white/12 bg-white/[0.08] text-white'
-                    : 'border-transparent text-[var(--text-dim)] hover:border-white/8 hover:bg-white/[0.04] hover:text-white'
+                onClick={() => void gmail.refresh()}
+                title="Refresh"
+                className="p-1.5 rounded-md text-[var(--text-faint)] hover:text-[var(--text-dim)] hover:bg-white/[0.04] transition-colors cursor-pointer"
+              >
+                <RefreshCw size={13} />
+              </button>
+
+              {/* Raw inbox toggle */}
+              <button
+                type="button"
+                onClick={handleToggleRawInbox}
+                aria-pressed={showRawInbox}
+                title={showRawInbox ? 'Smart view' : 'Raw inbox'}
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+                  showRawInbox
+                    ? 'text-[var(--accent)] bg-[var(--accent-dim)]/30'
+                    : 'text-[var(--text-faint)] hover:text-[var(--text-dim)] hover:bg-white/[0.04]'
                 }`}
               >
-                <Inbox size={14} />
-                Inbox
-                {unreadCount > 0 && (
-                  <span className="min-w-[18px] rounded-full bg-white/10 px-1.5 py-px text-center font-mono text-[10px] text-[var(--text-dim)]">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
+                <List size={13} />
+              </button>
+
+              {/* Saved */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setSavedOpen((prev) => !prev)}
+                  aria-expanded={savedOpen}
+                  aria-haspopup="true"
+                  title="Saved emails"
+                  className={`relative p-1.5 rounded-md transition-colors cursor-pointer ${
+                    savedOpen
+                      ? 'text-[var(--accent)] bg-[var(--accent-dim)]/30'
+                      : 'text-[var(--text-faint)] hover:text-[var(--text-dim)] hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <Bookmark size={13} />
+                  {(savedEmails?.length ?? 0) > 0 && (
+                    <span className="absolute top-0.5 right-0.5 w-[5px] h-[5px] rounded-full bg-[var(--accent)]" />
+                  )}
+                </button>
+
+                {/* Saved popover */}
+                {savedOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-1 w-[380px] overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--surface)] shadow-xl">
+                    <div className="max-h-[480px] overflow-y-auto">
+                      <SavedThreadList
+                        savedEmails={savedEmails ?? []}
+                        selectedThreadId={gmail.selectedThread?.id}
+                        onSelectThread={(id) => {
+                          void gmail.selectThread(id);
+                          setSavedOpen(false);
+                        }}
+                        onUnsave={(id) => onUnsaveEmail?.(id)}
+                      />
+                    </div>
+                  </div>
                 )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('triage')}
-                className={`flex items-center gap-1.5 rounded-[12px] border px-4 py-2 text-[14px] font-semibold transition ${
-                  activeTab === 'triage'
-                    ? 'border-[var(--accent)]/25 bg-[var(--accent)]/12 text-[var(--accent)]'
-                    : 'border-transparent text-[var(--text-dim)] hover:border-white/8 hover:bg-white/[0.04] hover:text-white'
-                }`}
-              >
-                <Sparkles size={14} />
-                AI Triage
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('saved')}
-                className={`flex items-center gap-1.5 rounded-[12px] border px-4 py-2 text-[14px] font-semibold transition ${
-                  activeTab === 'saved'
-                    ? 'border-[var(--purple)]/25 bg-[var(--purple)]/12 text-[var(--purple)]'
-                    : 'border-transparent text-[var(--text-dim)] hover:border-white/8 hover:bg-white/[0.04] hover:text-white'
-                }`}
-              >
-                <Bookmark size={14} />
-                Saved
-                {(savedEmails?.length ?? 0) > 0 && (
-                  <span className="min-w-[18px] rounded-full bg-white/10 px-1.5 py-px text-center font-mono text-[10px] text-[var(--text-dim)]">
-                    {savedEmails!.length}
-                  </span>
-                )}
-              </button>
+              </div>
             </div>
           </div>
 
-          <div className="px-4 py-2">
-            <div className="mx-auto flex max-w-[1720px] flex-col gap-2">
-              {activeTab === 'saved' ? null : activeTab === 'inbox' ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <form onSubmit={handleSearch} className="flex w-[260px] shrink-0 items-center gap-2 rounded-[12px] border border-white/8 bg-black/15 px-3 py-1.5">
-                      <Search size={14} className="shrink-0 text-[var(--text-faint)]" />
-                      <input
-                        type="text"
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder="Search emails..."
-                        className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
-                      />
-                      {searchInput && (
-                        <button
-                          type="button"
-                          onClick={handleClearSearch}
-                          className="text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer"
-                          aria-label="Clear search"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </form>
-                    <div className="min-w-0 flex-1 overflow-x-auto">
-                      <LabelFilter
-                        labels={gmail.labels}
-                        activeLabel={gmail.activeLabel}
-                        onSelect={gmail.setLabel}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void gmail.refresh()}
-                      className={`${secondaryToolbarButton} ml-auto shrink-0`}
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        <RefreshCw size={12} />
-                        Refresh
-                      </span>
-                    </button>
-                  </div>
-                  {selectedCount > 0 && (
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-[10px] border border-white/8 bg-black/15 px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-[0.08em] text-[var(--text-faint)]">
-                        {selectedCount} selected
-                      </span>
-                      <button
-                        type="button"
-                        onClick={gmail.selectAllVisibleThreads}
-                        className={secondaryToolbarButton}
-                      >
-                        Select all
-                      </button>
-                      <button
-                        type="button"
-                        onClick={gmail.clearSelection}
-                        className={secondaryToolbarButton}
-                      >
-                        Clear
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void gmail.performBulkAction('archive_threads')}
-                        className={`${bulkActionButton} border-[var(--accent)]/30 bg-[var(--accent-dim)]/20 text-[var(--accent)]`}
-                      >
-                        Archive
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void gmail.performBulkAction('trash_threads')}
-                        aria-label="Trash selected"
-                        className={`${bulkActionButton} border-[var(--error)]/30 bg-[var(--error-dim)]/20 text-[var(--error)]`}
-                      >
-                        Trash
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void gmail.performBulkAction('mark_read')}
-                        className={`${bulkActionButton} border-[var(--border)] bg-black/10 text-[var(--text-dim)]`}
-                      >
-                        Mark read
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void gmail.performBulkAction('mute_threads')}
-                        className={`${bulkActionButton} border-[var(--border)] bg-black/10 text-[var(--text-dim)]`}
-                      >
-                        Mute
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-2 text-[12px] text-[var(--text-dim)]">
-                    <Sparkles size={14} className="shrink-0 text-[var(--accent)]" />
-                    <span className="truncate">AI triage groups the current inbox into action buckets while keeping the reader pane stable.</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void gmail.refresh()}
-                    className={`${secondaryToolbarButton} shrink-0`}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <RefreshCw size={12} />
-                      Refresh
-                    </span>
-                  </button>
-                </div>
-              )}
+          {/* Bulk action bar — appears below the main bar when selection is active */}
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-2 px-4 py-1.5 border-t border-[var(--border)] bg-[var(--surface-strong)]/60">
+              <span className="text-[11px] font-mono text-[var(--text-faint)] opacity-60 shrink-0">
+                {selectedCount} selected
+              </span>
+              <div className="flex items-center gap-1.5 flex-1">
+                <button type="button" onClick={gmail.selectAllVisibleThreads} className={secondaryToolbarButton}>Select all</button>
+                <button type="button" onClick={gmail.clearSelection} className={secondaryToolbarButton}>Clear</button>
+                <div className="w-px h-3 bg-[var(--border)] mx-0.5" />
+                <button type="button" onClick={() => void gmail.performBulkAction('archive_threads')} className={`${bulkActionButton} border-[var(--accent)]/30 bg-[var(--accent-dim)]/20 text-[var(--accent)]`}>Archive</button>
+                <button type="button" onClick={() => void gmail.performBulkAction('trash_threads')} aria-label="Trash selected" className={`${bulkActionButton} border-[var(--error)]/30 bg-[var(--error-dim)]/20 text-[var(--error)]`}>Trash</button>
+                <button type="button" onClick={() => void gmail.performBulkAction('mark_read')} className={`${bulkActionButton} border-[var(--border)] bg-black/10 text-[var(--text-dim)]`}>Mark read</button>
+                <button type="button" onClick={() => void gmail.performBulkAction('mute_threads')} className={`${bulkActionButton} border-[var(--border)] bg-black/10 text-[var(--text-dim)]`}>Mute</button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Recent action bar */}
@@ -343,7 +330,7 @@ export default function GmailPage({
             </div>
             {showActionDetails && latestHistory && (
               <div className="mt-2 space-y-1 text-[11px] text-[var(--text-dim)]">
-                {latestHistory.result_items.slice(0, 6).map((item) => (
+                {latestHistory.result_items.slice(0, 6).map((item: { thread_id: string; sender: string; subject: string; status: string; error?: string }) => (
                   <div key={item.thread_id}>
                     {item.sender} - {item.subject} ({item.status})
                     {item.error ? `: ${item.error}` : ''}
@@ -355,101 +342,106 @@ export default function GmailPage({
         )}
 
         {/* Content area */}
-        <div className="flex min-h-0 flex-1 bg-[var(--surface-soft)]">
-          {activeTab === 'saved' ? (
-            /* Saved emails view */
-            <div className={`flex flex-col border-r border-[var(--border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] transition-[width] duration-200 ${
-              gmail.selectedThread ? 'hidden md:flex md:w-[420px] md:shrink-0 xl:w-[448px]' : 'flex-1 md:w-[420px] md:shrink-0 xl:w-[448px]'
-            }`}>
-              <div className="flex-1 overflow-y-auto">
-                <SavedThreadList
-                  savedEmails={savedEmails ?? []}
-                  selectedThreadId={gmail.selectedThread?.id}
-                  onSelectThread={(id) => void gmail.selectThread(id)}
-                  onUnsave={(id) => onUnsaveEmail?.(id)}
-                />
-              </div>
-            </div>
-          ) : activeTab === 'triage' ? (
-            /* AI Triage view — left panel shows categorized threads */
-            <div className={`flex flex-col border-r border-[var(--border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] transition-[width] duration-200 ${
-              gmail.selectedThread ? 'hidden md:flex md:w-[420px] md:shrink-0 xl:w-[448px]' : 'flex-1 md:w-[420px] md:shrink-0 xl:w-[448px]'
-            }`}>
-              <TriageAgentBar
-                triage={triage}
-                threads={gmail.threads}
-                onSendToAgent={handleTriageAgentAction}
-                onAISort={handleAISort}
-                aiSortLoading={aiSortLoading}
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--surface-soft)]">
+          {showRawInbox ? (
+            /* Raw inbox fallback mode — flat thread list takes full width, no workspace */
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <EnrichmentProgressBanner
+                visible={gmail.enrichmentStatus === 'loading' && !gmail.fallbackReason}
+                progress={gmail.enrichmentProgress}
               />
-              <div className="flex-1 overflow-y-auto">
-                <GmailTriageView
-                  triage={triage}
-                  onSelectThread={(id) => gmail.selectThread(id)}
-                  selectedThreadId={gmail.selectedThread?.id}
-                  customCategories={customCategories}
-                  onAddCategory={handleAddCategory}
-                  onMoveThread={handleMoveThread}
-                  onArchiveThread={(id) => gmail.archive(id)}
-                  onAskAgent={handleTriageAskAgent}
-                />
-              </div>
-            </div>
-          ) : (
-            /* Standard inbox view — left panel */
-            <div className={`flex flex-col border-r border-[var(--border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] transition-[width] duration-200 ${
-              gmail.selectedThread ? 'hidden md:flex md:w-[420px] md:shrink-0 xl:w-[448px]' : 'flex-1 md:w-[420px] md:shrink-0 xl:w-[448px]'
-            }`}>
-              {/* Thread list */}
-              <div className="flex-1 overflow-y-auto">
-                <ThreadList
+              <SmartViewUnavailableBanner fallbackReason={gmail.fallbackReason} />
+              <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+                <BucketedThreadList
                   threads={gmail.threads}
+                  enrichmentMap={gmail.enrichmentMap}
+                  enrichmentQueue={gmail.enrichmentQueue}
+                  fallbackReason={gmail.fallbackReason}
                   selectedId={gmail.selectedThread?.id ?? null}
                   selectedThreadIds={gmail.selectedThreadIds}
                   loading={gmail.loading}
                   hasMore={gmail.hasMore}
+                  showRawInbox={true}
                   onSelect={(id) => gmail.selectThread(id)}
                   onLoadMore={() => gmail.loadMore()}
                   onToggleSelect={gmail.toggleThreadSelection}
                 />
               </div>
             </div>
-          )}
-
-          {/* Right panel: thread reader */}
-          {gmail.selectedThread ? (
-            <div className="flex-1 flex flex-col min-w-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.04),transparent)]">
-              <ThreadReader
-                thread={gmail.selectedThread}
-                onBack={gmail.deselectThread}
-                onArchive={gmail.archive}
-                onTrash={gmail.trash}
-                onAgentAction={handleAgentAction}
-              />
-            </div>
-          ) : activeTab === 'inbox' ? (
-            <div className="hidden min-w-0 flex-1 items-center justify-center border-l border-white/4 bg-[linear-gradient(180deg,rgba(255,255,255,0.015),rgba(255,255,255,0.005))] md:flex">
-              <div className="w-full max-w-[360px] rounded-[24px] border border-white/8 bg-black/10 p-7 text-left">
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[16px] border border-white/8 bg-white/[0.03] text-[var(--text-dim)]">
-                  <MailOpen size={18} />
-                </div>
-                <h3 className="text-[22px] font-semibold tracking-[-0.04em] text-[var(--text)]">Reader ready</h3>
-                <p className="mt-3 text-[13px] leading-6 text-[var(--text-dim)]">
-                  Select a conversation from the left to open the full thread, draft a reply, or delegate the next action.
-                </p>
-                <div className="mt-6 space-y-2">
-                  <div className="flex items-center gap-2 rounded-[14px] border border-white/6 bg-white/[0.025] px-3 py-2 text-[12px] text-[var(--text-dim)]">
-                    <PanelLeftClose size={13} className="text-[var(--text-faint)]" />
-                    Keep the inbox list open while you review mail.
-                  </div>
-                  <div className="flex items-center gap-2 rounded-[14px] border border-white/6 bg-white/[0.025] px-3 py-2 text-[12px] text-[var(--text-dim)]">
-                    <ShieldCheck size={13} className="text-[var(--accent)]" />
-                    Use AI actions without leaving the thread.
-                  </div>
+          ) : (
+            /* Workspace mode — queue on the left, workspace canvas in the center */
+            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              {/* Left: queue (user-resizable via divider handle) */}
+              <div
+                className="flex min-w-0 flex-col border-r border-[var(--border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] shrink-0 overflow-hidden"
+                style={{ width: `${queuePane.width}px` }}
+              >
+                <EnrichmentProgressBanner
+                  visible={gmail.enrichmentStatus === 'loading' && !gmail.fallbackReason}
+                  progress={gmail.enrichmentProgress}
+                />
+                <SmartViewUnavailableBanner fallbackReason={gmail.fallbackReason} />
+                <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+                  <BucketedThreadList
+                    threads={gmail.threads}
+                    enrichmentMap={gmail.enrichmentMap}
+                    enrichmentQueue={gmail.enrichmentQueue}
+                    fallbackReason={gmail.fallbackReason}
+                    selectedId={gmail.selectedThread?.id ?? null}
+                    selectedThreadIds={gmail.selectedThreadIds}
+                    loading={gmail.loading}
+                    hasMore={gmail.hasMore}
+                    showRawInbox={false}
+                    onSelect={(id) => gmail.selectThread(id)}
+                    onLoadMore={() => gmail.loadMore()}
+                    onToggleSelect={gmail.toggleThreadSelection}
+                  />
                 </div>
               </div>
+
+              {/* Divider: drag to resize the queue, double-click to reset */}
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize queue pane"
+                aria-valuenow={queuePane.width}
+                aria-valuemin={240}
+                aria-valuemax={560}
+                tabIndex={0}
+                onMouseDown={queuePane.onMouseDown}
+                onKeyDown={queuePane.onKeyDown}
+                onDoubleClick={queuePane.onDoubleClick}
+                className={`group relative flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-transparent hover:bg-[var(--accent)]/10 focus-visible:bg-[var(--accent)]/20 focus-visible:outline-none ${
+                  queuePane.isDragging ? 'bg-[var(--accent)]/20' : ''
+                }`}
+              >
+                <span
+                  className={`absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${
+                    queuePane.isDragging
+                      ? 'bg-[var(--accent)]'
+                      : 'bg-[var(--border)] group-hover:bg-[var(--accent)]/60'
+                  }`}
+                  aria-hidden="true"
+                />
+              </div>
+
+              {/* Center: workspace canvas */}
+              <div className="min-w-0 flex-1 overflow-hidden bg-[linear-gradient(180deg,rgba(0,0,0,0.04),transparent)]">
+                <GmailWorkspace
+                  item={workItem}
+                  threadDetail={gmail.selectedThread}
+                  onArchive={gmail.archive}
+                  onPrimaryAction={handlePrimaryAction}
+                  onSecondaryAction={handleSecondaryAction}
+                  onAgentAction={handleWorkspaceAgentAction}
+                  onDirectAction={handleDirectAction}
+                  onNext={gmail.selectNextInQueue}
+                  onUndo={() => { void gmail.undoRecentAction(); }}
+                  isLoading={gmail.loading}
+                />
+              </div>
             </div>
-          ) : null}
+          )}
         </div>
       </div>
 

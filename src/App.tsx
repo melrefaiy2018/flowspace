@@ -39,24 +39,30 @@ import SettingsRail, { type SettingsSection } from './components/SettingsRail';
 import GmailPage from './pages/GmailPage';
 import TasksPage from './pages/TasksPage';
 import CalendarPage from './pages/CalendarPage';
-import SkillsPage from './pages/SkillsPage';
-import { RefreshCw, AlertCircle, Mail, Calendar, HardDrive, CheckSquare, Check, X, SlidersHorizontal, ChevronLeft, PanelRightOpen, PanelRightClose, Sparkles, Loader2, MoreHorizontal } from 'lucide-react';
+import WorkflowsPage from './pages/WorkflowsPage';
+
+import AutomationsPage from './pages/AutomationsPage';
+import { RefreshCw, AlertCircle, Check, X, PanelRightOpen, PanelRightClose, Sparkles, Loader2, MoreHorizontal } from 'lucide-react';
 import FlowSpaceLogo from './components/FlowSpaceLogo';
 import RunCenter from './components/RunCenter';
+import NotificationCenter from './components/NotificationCenter';
+import { useNotifications } from './hooks/useNotifications';
+import type { Notification } from './hooks/useNotifications';
 import { MemorySidebar } from './components/MemorySidebar';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import AuthPage from './pages/AuthPage';
 import ConnectGooglePage from './pages/ConnectGooglePage';
 import { useWorkspaceIdentity } from './lib/workspaceIdentity';
-import AccountMenu from './components/AccountMenu';
-import ProviderSwitcher from './components/ProviderSwitcher';
 import ErrorBoundary from './components/ErrorBoundary';
 import HomeDashboard from './components/HomeDashboard';
+import { useDrafts } from './hooks/useDrafts';
+import type { ApproveResult } from './hooks/useDrafts';
 
 const CHAT_WIDTH_KEY = 'flowspace.chat.width';
-const DEFAULT_CHAT_WIDTH = 420;
-const MIN_CHAT_WIDTH = 300;
-const MAX_CHAT_WIDTH = 700;
+const DEFAULT_CHAT_WIDTH = 400;
+const MIN_CHAT_WIDTH = 320;
+const MAX_CHAT_WIDTH = 560;
 
 /** Chat view with an artifacts sidebar that auto-shows when data blocks are present. */
 function ChatViewWithArtifacts() {
@@ -86,73 +92,6 @@ function ChatViewWithArtifacts() {
   );
 }
 
-function WorkspaceHub({
-  stats,
-  onOpen,
-}: {
-  stats: { unreadEmails: number; upcomingEvents: number; openTasks: number } | null;
-  onOpen: (view: 'gmail' | 'calendar' | 'drive' | 'tasks') => void;
-}) {
-  const cards = [
-    { key: 'gmail' as const, title: 'Gmail', subtitle: `${stats?.unreadEmails ?? 0} unread`, icon: Mail, enabled: true },
-    { key: 'calendar' as const, title: 'Calendar', subtitle: `${stats?.upcomingEvents ?? 0} upcoming`, icon: Calendar, enabled: true },
-    { key: 'drive' as const, title: 'Drive', subtitle: 'Browse files and docs', icon: HardDrive, enabled: false },
-    { key: 'tasks' as const, title: 'Tasks', subtitle: `${stats?.openTasks ?? 0} open`, icon: CheckSquare, enabled: true },
-  ];
-
-  return (
-    <div className="px-6 pt-10 pb-12 max-w-[900px] mx-auto">
-      <div className="mb-7">
-        <h2 className="text-[22px] font-semibold tracking-tight text-[var(--text)]">Workspace</h2>
-        <p className="mt-1 text-[13px] text-[var(--text-dim)]">Open the Google app you want, then use {AGENT_NAME} to delegate follow-up actions.</p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {cards.map((card) => {
-          const content = (
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="text-[15px] font-semibold text-[var(--text)]">{card.title}</div>
-                  {!card.enabled && (
-                    <span className="rounded-full border border-[var(--border)] bg-[var(--surface2)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-faint)]">
-                      Coming soon
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1 text-[12px] text-[var(--text-faint)]">{card.subtitle}</div>
-              </div>
-              <div className={`h-9 w-9 rounded-[10px] border bg-[var(--surface2)] flex items-center justify-center ${card.enabled ? 'border-[var(--border2)] group-hover:border-[var(--accent)]/40' : 'border-[var(--border)] opacity-60'}`}>
-                <card.icon size={15} className={card.enabled ? 'text-[var(--text-dim)] group-hover:text-[var(--text)]' : 'text-[var(--text-faint)]'} />
-              </div>
-            </div>
-          );
-
-          if (!card.enabled) {
-            return (
-              <div
-                key={card.key}
-                aria-disabled="true"
-                className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left opacity-75 select-none"
-              >
-                {content}
-              </div>
-            );
-          }
-
-          return (
-            <button
-              key={card.key}
-              onClick={() => onOpen(card.key)}
-              className="group rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4 text-left hover:border-[var(--accent)]/40 hover:bg-[var(--surface2)] transition-colors cursor-pointer"
-            >
-              {content}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 function formatRelativeTimestamp(ts: number): string {
   const diffMs = Date.now() - ts;
@@ -205,6 +144,7 @@ function AppInner() {
     sendMessage,
     triggerAction,
     chatPanelOpen,
+    openChatPanel,
     closeChat,
     toggleChatPanel,
     openConversationInPanel,
@@ -212,19 +152,27 @@ function AppInner() {
     clearNavigateTab,
   } = useChatContext();
   const data = useDashboardData();
+  const draftsState = useDrafts();
   const briefingState = useBriefing(data.auth?.activeAccountId ?? data.auth?.user?.email);
   const {
     briefing,
     loading: briefingLoading,
     error: briefingError,
     retrying: briefingRetrying,
-    newItemCount,
     acknowledge,
     refresh: refreshBriefing,
     ignoreTarget,
     restoreTarget,
     isTargetIgnored,
   } = briefingState;
+
+  const accountKey = data.auth?.activeAccountId ?? data.auth?.user?.email;
+  const notificationsState = useNotifications({
+    briefing,
+    pendingApprovals,
+    drafts: draftsState.drafts,
+    accountKey,
+  });
 
   const [draftModal, setDraftModal] = useState<DraftReplyResponse | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -241,14 +189,47 @@ function AppInner() {
   const [threadGroupDraft, setThreadGroupDraft] = useState('');
   const [threadBriefDraft, setThreadBriefDraft] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const [workflowHandoffDescription, setWorkflowHandoffDescription] = useState<string | null>(null);
 
-  // Track the previous non-chat view so the back button can return to it
-  const previousViewRef = useRef<ActiveView>('dashboard');
-  useEffect(() => {
-    if (activeView !== 'chat') {
-      previousViewRef.current = activeView;
+  const handleSaveAsWorkflow = useCallback((_toolNames: string[]) => {
+    setActiveView('workflows');
+    setWorkflowHandoffDescription('Based on what the agent just did in chat');
+  }, [setActiveView]);
+
+  const handleNotificationOpen = useCallback((notification: Notification) => {
+    notificationsState.markRead(notification.id);
+    const t = notification.navigationTarget;
+    switch (t.kind) {
+      case 'gmail_thread':
+        setGmailOpenRequest({ threadId: t.threadId, nonce: Date.now() });
+        setActiveView('mail');
+        break;
+      case 'app_view':
+        setActiveView(t.view);
+        break;
+      case 'chat_approval':
+        switchConversation(t.conversationId);
+        openChatPanel();
+        break;
+      case 'draft_queue':
+        setActiveView('dashboard');
+        break;
     }
-  }, [activeView]);
+  }, [notificationsState, setActiveView, setGmailOpenRequest, switchConversation, openChatPanel]);
+
+  // Track the previous view so the back button can return to it
+  const previousViewRef = useRef<ActiveView>('dashboard');
+  // Track whether the chat panel was opened by an Approve action (so we don't close it on that navigation)
+  const approvedPanelRef = useRef(false);
+  useEffect(() => {
+    if (previousViewRef.current !== activeView) {
+      if (!approvedPanelRef.current) {
+        closeChat();
+      }
+      approvedPanelRef.current = false;
+    }
+    previousViewRef.current = activeView;
+  }, [activeView, closeChat]);
 
   // Escape key to close thread details panel
   useEffect(() => {
@@ -284,7 +265,7 @@ function AppInner() {
       // Cmd+1..5 — switch views (only when not in an input)
       if (meta && !isInput && e.key >= '1' && e.key <= '5') {
         e.preventDefault();
-        const views: ActiveView[] = ['dashboard', 'gmail', 'calendar', 'tasks', 'settings'];
+        const views: ActiveView[] = ['dashboard', 'mail', 'calendar', 'tasks', 'settings'];
         const idx = parseInt(e.key, 10) - 1;
         if (views[idx]) setActiveView(views[idx]);
         return;
@@ -458,8 +439,70 @@ function AppInner() {
   const handleOpenThreadInApp = useCallback((threadId: string) => {
     setGmailOpenRequest({ threadId, nonce: Date.now() });
     closeChat();
-    setActiveView('gmail');
+    setActiveView('mail');
   }, [closeChat, setActiveView]);
+
+  const handleApproveToChat = useCallback((result: ApproveResult) => {
+    const { meetingTitle, meetingTime, emails, docs, attendees } = result.sources;
+    const meetingDate = new Date(meetingTime);
+    const timeStr = meetingDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const dateStr = meetingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const contextParts: string[] = [
+      `I've loaded your meeting prep for **${meetingTitle}** (${dateStr} at ${timeStr}).`,
+    ];
+    if (attendees.length > 0) contextParts.push(`**Attendees:** ${attendees.slice(0, 5).join(', ')}`);
+    if (emails.length > 0) contextParts.push(`**Emails referenced:**\n${emails.slice(0, 5).map((e) => `- "${e.subject}" from ${e.from}`).join('\n')}`);
+    if (docs.length > 0) contextParts.push(`**Drive files referenced:**\n${docs.slice(0, 5).map((d) => `- [${d.title}](${d.url})`).join('\n')}`);
+    contextParts.push('Ask me anything about this meeting or any of these sources.');
+    approvedPanelRef.current = true;
+    void sendMessage(result.threadBrief, {
+      forceNewChat: true,
+      displayContent: contextParts.join('\n\n'),
+      threadBrief: result.threadBrief,
+    });
+    openChatPanel();
+  }, [sendMessage, openChatPanel]);
+
+  const handleDiscussDraft = useCallback((draft: import('./agent/draft-types').StagedDraft) => {
+    const meetingDate = new Date(draft.meetingTime);
+    const timeStr = meetingDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const dateStr = meetingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const sourcesLines: string[] = [];
+    if (draft.relatedEmails.length > 0) {
+      sourcesLines.push('Sources used to generate this brief:');
+      draft.relatedEmails.slice(0, 5).forEach((e) => sourcesLines.push(`- Email from ${e.from}: "${e.subject}"`));
+    }
+    if (draft.linkedDocs.length > 0) {
+      if (sourcesLines.length === 0) sourcesLines.push('Sources used to generate this brief:');
+      draft.linkedDocs.slice(0, 5).forEach((d) => sourcesLines.push(`- Drive file: "${d.title}"`));
+    }
+    if (sourcesLines.length > 0) {
+      sourcesLines.push('');
+      sourcesLines.push('The user may ask about any of these sources. Use search_emails and search_drive to look up full content if needed.');
+    }
+    const threadBrief = [
+      `## Meeting Prep: ${draft.meetingTitle}`,
+      `**When:** ${dateStr} at ${timeStr}`,
+      `**Attendees:** ${draft.attendees.slice(0, 5).join(', ')}`,
+      '',
+      draft.summary,
+      ...(sourcesLines.length > 0 ? ['', ...sourcesLines] : []),
+    ].join('\n');
+    const contextParts: string[] = [
+      `Let's discuss your meeting prep for **${draft.meetingTitle}** (${dateStr} at ${timeStr}).`,
+    ];
+    if (draft.attendees.length > 0) contextParts.push(`**Attendees:** ${draft.attendees.slice(0, 5).join(', ')}`);
+    if (draft.relatedEmails.length > 0) contextParts.push(`**Emails referenced:**\n${draft.relatedEmails.slice(0, 5).map((e) => `- "${e.subject}" from ${e.from}`).join('\n')}`);
+    if (draft.linkedDocs.length > 0) contextParts.push(`**Drive files referenced:**\n${draft.linkedDocs.slice(0, 5).map((d) => `- [${d.title}](${d.url})`).join('\n')}`);
+    contextParts.push('Ask me anything — I can look up the full emails and files, help you refine the agenda, or suggest talking points.');
+    void sendMessage(threadBrief, {
+      forceNewChat: true,
+      displayContent: contextParts.join('\n\n'),
+      threadBrief,
+      eventId: draft.meetingId,
+    });
+    openChatPanel();
+  }, [sendMessage, openChatPanel]);
 
   const loadImportancePreferences = useCallback(async () => {
     try {
@@ -574,7 +617,7 @@ function AppInner() {
   const activeAccount = connectedAccounts.find((account) => account.id === activeAccountId) ?? null;
   const workspaceIdentity = useWorkspaceIdentity(user?.email, user?.name);
   const displayName = workspaceIdentity.identity;
-  const isToolSubpage = activeView === 'gmail' || activeView === 'drive' || activeView === 'calendar' || activeView === 'tasks';
+  const isToolSubpage = activeView === 'mail' || activeView === 'calendar' || activeView === 'tasks';
   const hasBriefing = briefing && !briefing.error;
   const currentConversation = conversations.find((c) => c.id === currentConversationId) || null;
   const sidePanelTabs = isToolSubpage
@@ -608,17 +651,12 @@ function AppInner() {
       : settingsSection === 'account' ? 'User Account'
       : settingsSection === 'personalization' ? 'Personalization'
       : 'Updates'
-    : activeView === 'workspace' ? 'Tools'
-    : activeView === 'skills' ? 'Custom Skills'
-    : activeView === 'gmail' ? 'Gmail'
-    : activeView === 'drive' ? 'Drive'
+    : activeView === 'workflows' ? 'Workflows'
+    : activeView === 'mail' ? 'Mail'
     : activeView === 'calendar' ? 'Calendar'
     : activeView === 'tasks' ? 'Tasks'
     : 'Home';
-  const viewMeta = activeView === 'dashboard'
-    ? 'Workspace command center'
-    : 'FlowSpace workspace';
-  const showWorkspaceTabs = activeView === 'dashboard' || activeView === 'gmail' || activeView === 'calendar' || activeView === 'tasks';
+  const viewMeta = 'FlowSpace';
   const fallbackTriage = data.emails.length > 0
     ? (() => {
       const triage = triageEmailsHeuristic(data.emails, importancePreferences);
@@ -747,15 +785,14 @@ function AppInner() {
           forceExpanded={false}
           forceCollapsed={chatPanelOpen || isToolSubpage}
           activeSection={
-            activeView === 'gmail' ? 'gmail'
-              : activeView === 'drive' ? 'drive'
+            activeView === 'mail' ? 'mail'
               : activeView === 'calendar' ? 'calendar'
               : activeView === 'tasks' ? 'tasks'
-              : activeView === 'workspace' ? 'workspace'
-              : activeView === 'skills' ? 'skills'
+              : activeView === 'workflows' ? 'workflows'
               : chatPanelOpen || messages.length > 0 ? 'chats'
               : 'home'
           }
+          pendingDraftCount={draftsState.drafts.filter((d) => d.status === 'pending').length}
           conversations={conversations}
           threadGroups={threadGroups}
           currentConversationId={currentConversationId}
@@ -783,130 +820,21 @@ function AppInner() {
         {/* Topbar */}
         <div className="h-14 border-b border-[var(--border)] flex items-center justify-between px-5 md:px-6 gap-4 shrink-0 bg-[var(--bg-elevated)]">
           <div className="min-w-0 flex-1 flex items-center gap-3">
-            {isToolSubpage && (
-              <button
-                onClick={() => setActiveView('workspace')}
-                className="h-8 shrink-0 rounded-md border border-[var(--border)] px-2 text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--surface2)] inline-flex items-center gap-1.5 cursor-pointer"
-                title="Back to Tools"
-              >
-                <ChevronLeft size={14} />
-                <span className="text-[14px] font-medium">Tools</span>
-              </button>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-3 min-w-0">
-                {isEditingTitle && showConversationHeaderControls ? (
-                  <>
-                    <input
-                      ref={titleInputRef}
-                      value={titleDraft}
-                      onChange={(e) => setTitleDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          saveTitleEdit();
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault();
-                          cancelTitleEdit();
-                        }
-                      }}
-                      className="h-9 w-full max-w-[480px] rounded-md border border-[var(--border2)] bg-[var(--surface)] px-3 text-[14px] font-semibold text-[var(--text)] outline-none focus:border-[var(--accent-border)]"
-                    />
-                    <button
-                      onClick={saveTitleEdit}
-                      className="h-7 w-7 rounded-md border border-[var(--border)] text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--surface2)] inline-flex items-center justify-center cursor-pointer"
-                      title="Save title"
-                    >
-                      <Check size={13} />
-                    </button>
-                    <button
-                      onClick={cancelTitleEdit}
-                      className="h-7 w-7 rounded-md border border-[var(--border)] text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--surface2)] inline-flex items-center justify-center cursor-pointer"
-                      title="Cancel rename"
-                    >
-                      <X size={13} />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {showWorkspaceTabs ? (
-                      <div className="flex items-center gap-2 shrink-0" role="tablist" aria-label="Workspace views">
-                        {([
-                          { key: 'dashboard' as ActiveView, label: 'Home', action: () => { closeChat(); setActiveView('dashboard'); } },
-                          { key: 'gmail' as ActiveView, label: 'Gmail', action: () => setActiveView('gmail') },
-                          { key: 'calendar' as ActiveView, label: 'Calendar', action: () => setActiveView('calendar') },
-                          { key: 'tasks' as ActiveView, label: 'Tasks', action: () => setActiveView('tasks') },
-                        ] as const).map((tab) => (
-                          <button
-                            key={tab.key}
-                            role="tab"
-                            aria-selected={activeView === tab.key}
-                            onClick={tab.action}
-                            className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
-                              activeView === tab.key
-                                ? 'border-[var(--accent)]/35 bg-[var(--accent-glow)] text-[var(--text)]'
-                                : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-faint)] hover:text-[var(--text)] hover:border-[var(--border2)]'
-                            }`}
-                          >
-                            {tab.label}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div
-                        className="text-[16px] font-semibold text-[var(--text)] tracking-[-0.01em] truncate"
-                        onDoubleClick={showConversationHeaderControls ? startTitleEdit : undefined}
-                        title={viewTitle}
-                      >
-                        {viewTitle}
-                      </div>
-                    )}
-                    {showConversationHeaderControls && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={startTitleEdit}
-                          className="h-7 rounded-md px-2.5 text-[13px] border border-[var(--border)] text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--surface2)] inline-flex items-center justify-center cursor-pointer"
-                          title="Rename conversation"
-                        >
-                          Rename
-                        </button>
-                        <button
-                          onClick={() => setIsThreadDetailsOpen(true)}
-                          className="h-6 w-6 rounded-md text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--surface2)] inline-flex items-center justify-center cursor-pointer"
-                          title="Thread details"
-                        >
-                          <SlidersHorizontal size={12} />
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+            <div
+              className="text-[16px] font-semibold text-[var(--text)] tracking-[-0.01em] truncate"
+              title={viewTitle}
+            >
+              {viewTitle}
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {newItemCount > 0 && (
-              <button
-                onClick={() => { acknowledge(); setActiveView('gmail'); }}
-                className="flex items-center gap-[5px] bg-[var(--amber-dim)] border border-[var(--amber-border)] text-[var(--amber)] text-[12px] font-medium px-[9px] py-[3px] rounded-full cursor-pointer font-mono"
-              >
-                <span className="w-[6px] h-[6px] bg-[var(--amber)] rounded-full animate-pulse" />
-                {newItemCount} new item{newItemCount !== 1 ? 's' : ''}
-              </button>
-            )}
-            {briefingRetrying && (
-              <div className="flex items-center gap-1.5 text-[13px] text-[var(--text-dim)]">
-                <RefreshCw size={11} className="animate-spin" />
-                Retrying briefing...
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Inline status text — merged briefing retry and draft generation */}
+            {(briefingRetrying || draftLoading) && (
+              <div className="hidden md:flex items-center gap-1.5 text-[12px] text-[var(--text-faint)]">
+                <RefreshCw size={10} className="animate-spin" />
+                {briefingRetrying ? 'Refreshing…' : 'Drafting…'}
               </div>
             )}
-            {draftLoading && (
-              <div className="flex items-center gap-1.5 text-[13px] text-[var(--text-dim)]">
-                <RefreshCw size={11} className="animate-spin" />
-                Drafting reply...
-              </div>
-            )}
-            <RunCenter />
             {briefingError && !briefingLoading && (
               <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface2)] text-[var(--text-faint)] text-[11px] whitespace-nowrap">
                 <AlertCircle size={10} className="shrink-0" />
@@ -914,22 +842,41 @@ function AppInner() {
                 <span className="md:hidden">Briefing N/A</span>
               </div>
             )}
+            {/* Refresh */}
             <button
               onClick={() => { data.refresh(); refreshBriefing(); }}
               className="text-[var(--text-faint)] hover:text-[var(--text-dim)] transition-colors cursor-pointer p-1 shrink-0"
               title="Refresh"
+              aria-label="Refresh workspace"
             >
               <RefreshCw size={13} className={data.loading ? 'animate-spin' : ''} />
             </button>
-            <ProviderSwitcher onProviderChange={refreshBriefing} />
-            <AccountMenu
-              accounts={connectedAccounts}
-              activeAccountId={activeAccountId}
-              busy={accountMenuBusy}
-              onSwitch={handleSwitchAccount}
-              onAdd={handleAddAccount}
-              onRemove={handleRemoveAccount}
+            {/* Run Status */}
+            <RunCenter />
+            {/* Notification Center */}
+            <NotificationCenter
+              notifications={notificationsState.notifications}
+              unreadCount={notificationsState.unreadCount}
+              onMarkRead={notificationsState.markRead}
+              onMarkAllRead={notificationsState.markAllRead}
+              onDismiss={notificationsState.dismiss}
+              onOpen={handleNotificationOpen}
+              briefingLoading={briefingLoading}
+              onPanelOpen={acknowledge}
             />
+            {/* Chat toggle */}
+            <button
+              onClick={toggleChatPanel}
+              className={`flex items-center justify-center h-8 w-8 rounded-lg transition-colors cursor-pointer ${
+                chatPanelOpen
+                  ? 'text-[var(--accent)] bg-[var(--accent-dim)] hover:bg-[var(--accent-dim)]'
+                  : 'text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--surface2)]'
+              }`}
+              title={chatPanelOpen ? 'Close assistant' : 'Open assistant'}
+              aria-label={chatPanelOpen ? 'Close assistant' : 'Open assistant'}
+            >
+              {chatPanelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+            </button>
           </div>
         </div>
 
@@ -945,12 +892,15 @@ function AppInner() {
               onSwitchAccount={handleSwitchAccount}
               onRemoveAccount={handleRemoveAccount}
             />
-          ) : activeView === 'workspace' ? (
-            <WorkspaceHub stats={data.stats} onOpen={(view) => setActiveView(view)} />
-          ) : activeView === 'skills' ? (
-            <SkillsPage />
-          ) : activeView === 'gmail' ? (
-            <ErrorBoundary key="gmail" fallbackMessage="Something went wrong loading Gmail.">
+          ) : activeView === 'workflows' ? (
+            <WorkflowsPage
+              initialHandoffDescription={workflowHandoffDescription}
+              key={workflowHandoffDescription ?? 'workflows'}
+            />
+          ) : activeView === 'automations' ? (
+            <AutomationsPage />
+          ) : activeView === 'mail' ? (
+            <ErrorBoundary key="mail" fallbackMessage="Something went wrong loading Mail.">
             <GmailPage
               accountKey={activeAccountId ?? undefined}
               initialTab={navigateTab ?? undefined}
@@ -961,10 +911,6 @@ function AppInner() {
               onUnsaveEmail={handleUnsaveEmail}
             />
             </ErrorBoundary>
-          ) : activeView === 'drive' ? (
-            <div className="flex items-center justify-center h-full text-[var(--text-faint)]">
-              <p className="text-[14px]">Drive page coming soon</p>
-            </div>
           ) : activeView === 'calendar' ? (
             <ErrorBoundary key="calendar" fallbackMessage="Something went wrong loading Calendar.">
             <CalendarPage />
@@ -1004,6 +950,9 @@ function AppInner() {
               onOpenSavedThread={handleOpenThreadInApp}
               onUnsaveEmail={handleUnsaveEmail}
               onNavigate={(view) => setActiveView(view)}
+              onApproveToChat={handleApproveToChat}
+              onDiscussDraft={handleDiscussDraft}
+              draftsState={draftsState}
             />
             </ErrorBoundary>
           )}
@@ -1024,8 +973,8 @@ function AppInner() {
             className="hidden lg:flex h-screen flex-col bg-[var(--bg-elevated)] overflow-hidden shrink-0"
             style={{ width: chatWidth }}
           >
-            <div className="flex-1 flex flex-col min-h-0 px-1">
-              <ChatThread title={AGENT_NAME} showCloseButton />
+            <div className="flex-1 flex flex-col min-h-0">
+              <ChatThread title={AGENT_NAME} showCloseButton onSaveAsWorkflow={handleSaveAsWorkflow} />
               <CommandInput variant="reply" />
             </div>
           </aside>
@@ -1140,7 +1089,7 @@ function AppInner() {
             className="lg:hidden h-screen flex flex-col border-l border-[var(--border)] bg-[var(--bg-elevated)] overflow-hidden shrink-0"
           >
             <div className="flex-1 flex flex-col min-h-0">
-              <ChatThread title={AGENT_NAME} showCloseButton />
+              <ChatThread title={AGENT_NAME} showCloseButton onSaveAsWorkflow={handleSaveAsWorkflow} />
               <CommandInput variant="reply" />
             </div>
           </motion.aside>
@@ -1337,13 +1286,19 @@ export default function App() {
 
   // If Supabase is not configured, fall back to the original Google-only auth flow
   if (!supabaseConfigured) {
-    return <GoogleOnlyApp />;
+    return (
+      <ThemeProvider>
+        <GoogleOnlyApp />
+      </ThemeProvider>
+    );
   }
 
   return (
-    <AuthProvider>
-      <SupabaseGatedApp />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <SupabaseGatedApp />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

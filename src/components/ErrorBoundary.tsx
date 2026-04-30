@@ -28,12 +28,21 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const errorMessage = this.state.error?.message ?? 'Unknown error';
+      const errorStack = this.state.error?.stack ?? '';
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
           <AlertTriangle className="w-10 h-10 text-[var(--text-faint)]" />
           <p className="text-[14px] text-[var(--text-dim)]">
             {this.props.fallbackMessage ?? 'Something went wrong loading this page.'}
           </p>
+          <details className="max-w-2xl text-left text-[12px] text-[var(--text-faint)]">
+            <summary className="cursor-pointer">Error details</summary>
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--surface2)] p-3 text-[11px]">
+              {errorMessage}
+              {errorStack ? '\n\n' + errorStack : ''}
+            </pre>
+          </details>
           <button
             onClick={this.handleRetry}
             className="flex items-center gap-2 px-4 py-2 text-[13px] rounded-lg bg-[var(--surface2)] hover:bg-[var(--surface3)] text-[var(--text)] transition-colors cursor-pointer"

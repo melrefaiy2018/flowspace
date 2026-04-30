@@ -3,6 +3,7 @@ import {
   buildTriageSystemPrompt,
   buildTriageUserMessage,
   parseTriageResponse,
+  parseAiTriageResponse,
   type AITriageResult,
 } from '../ai-triage';
 import type { GmailThreadSummary } from '../../services/api';
@@ -119,5 +120,71 @@ describe('parseTriageResponse', () => {
 
   it('throws on missing categories field', () => {
     expect(() => parseTriageResponse('{"foo": "bar"}', validIds)).toThrow();
+  });
+});
+
+describe('parseAiTriageResponse — threadType handling', () => {
+  const ids = new Set(['t1', 't2', 't3']);
+
+  it('valid threadType in LLM response → enrichment has matching threadType', () => {
+    const raw = JSON.stringify({
+      enrichments: [
+        {
+          threadId: 't1',
+          priority: 'high',
+          recommendedAction: 'draft_reply',
+          whyItMatters: 'Meeting request from Alice on Friday at 3pm.',
+          effortMinutes: '5',
+          bucket: 'needs_reply',
+          threadType: 'meeting_request',
+        },
+      ],
+    });
+    const result = parseAiTriageResponse(raw, ids);
+    const e = result.enrichments.find((x) => x.threadId === 't1');
+    expect(e).toBeDefined();
+    expect(e?.threadType).toBe('meeting_request');
+    expect(result.failed).not.toContain('t1');
+  });
+
+  it('unknown threadType in LLM response → enrichment has threadType undefined, NOT in failed[]', () => {
+    const raw = JSON.stringify({
+      enrichments: [
+        {
+          threadId: 't1',
+          priority: 'medium',
+          recommendedAction: 'draft_reply',
+          whyItMatters: 'Alice is waiting for your answer on the proposal.',
+          effortMinutes: '5',
+          bucket: 'needs_reply',
+          threadType: 'invalid_type',
+        },
+      ],
+    });
+    const result = parseAiTriageResponse(raw, ids);
+    const e = result.enrichments.find((x) => x.threadId === 't1');
+    expect(e).toBeDefined();
+    expect(e?.threadType).toBeUndefined();
+    expect(result.failed).not.toContain('t1');
+  });
+
+  it('threadType omitted entirely → enrichment has threadType undefined, NOT in failed[]', () => {
+    const raw = JSON.stringify({
+      enrichments: [
+        {
+          threadId: 't1',
+          priority: 'low',
+          recommendedAction: 'archive',
+          whyItMatters: 'Receipt from Stripe for $49 on Apr 8.',
+          effortMinutes: '1',
+          bucket: 'reference_fyi',
+        },
+      ],
+    });
+    const result = parseAiTriageResponse(raw, ids);
+    const e = result.enrichments.find((x) => x.threadId === 't1');
+    expect(e).toBeDefined();
+    expect(e?.threadType).toBeUndefined();
+    expect(result.failed).not.toContain('t1');
   });
 });

@@ -11,17 +11,30 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { execFileSync, execFile } from 'child_process';
+import http from 'http';
 import https from 'https';
 import { randomUUID } from 'crypto';
 import dotenv from 'dotenv';
 import { handleChat, executeApprovedAction } from './src/agent/chat.js';
 import type { ApprovalRequest, ChatStreamEvent, InboxActionType, RunRecord, RunStatus, RunSummary, ToolEvent } from './src/shared/chat.js';
+import { upsertConversation } from './src/agent/conversation-index.js';
+import type { ConversationOrigin } from './src/agent/conversation-index.js';
 import { createLLMClient, isLLMConfigured, testConnection } from './src/agent/llm-client.js';
 import { readLLMSettingsMasked, readLLMSettings, mergeSettings, writeLLMSettings, isMaskedKey, removeProvider, getActiveProviderConfig } from './src/agent/llm-settings.js';
 import { PROVIDER_META } from './src/agent/llm-providers-meta.js';
 import { loadDynamicTools, getDynamicTools, getDynamicTool, registerDynamicTool, updateDynamicTool, removeDynamicTool } from './src/agent/dynamic-tool-registry.js';
-import { buildTriageSystemPrompt, buildTriageUserMessage, parseTriageResponse } from './src/lib/ai-triage.js';
+import { parseAiTriageResponse, buildListEnrichmentPrompt, GENERIC_VERBS } from './src/lib/ai-triage.js';
+import { invalidateEnrichmentForThread, loadEnrichmentCache, putEnrichment, saveEnrichmentCache } from './src/lib/enrichment-cache.js';
+import { computeDeterministicChips } from './src/lib/thread-brief-utils.js';
+import { buildThreadBriefPrompt } from './src/agent/prompts/gmail-enrichment.js';
+import type { ThreadBrief, ContextChip, FirstClassAction, ThreadBriefResponse } from './src/shared/gmail-enrichment-types.js';
 import { validateDynamicTool, getAllowedActions } from './src/agent/tool-composer.js';
+import { startWorkflowScheduler, restartWorkflowScheduler, executeForMessage } from './src/agent/workflow-scheduler.js';
+import type { SchedulerDeps } from './src/agent/workflow-scheduler.js';
+import { getProcessedCount, getFailures, getLastPollAt as getStateLastPollAt, clearFailures } from './src/agent/workflow-trigger-state.js';
+import { loadSettings as loadSynthSettings, updateSettings as updateSynthSettings } from './src/agent/synthesizer/settings.js';
+import { loadLog as loadSynthLog, clearLog as clearSynthLog } from './src/agent/synthesizer/invocation-log.js';
+import { SYNTHESIS_SETTINGS_RANGES } from './src/agent/synthesizer/types.js';
 import type { LLMProviderConfig, LLMSettings } from './src/agent/llm-types.js';
 import { executeInboxAction, listInboxActionHistory, undoInboxAction } from './src/lib/inbox-actions.js';
 import {
@@ -37,6 +50,7 @@ import { normalizeGoogleTask, type NormalizedTask } from './src/lib/tasks.js';
 import { loadMemories, getMemories, createMemory, updateMemory, deleteMemory, setMemoryFileIO } from './src/agent/memory/memory-store.js';
 import type { MemoryEntry, MemoryCategory } from './src/agent/memory/memory-types.js';
 import { getUserHash } from './src/lib/user-hash.js';
+import { getDataDir, isProductionMode } from './src/lib/data-dir.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // In production builds, __FLOWSPACE_VERSION__ is replaced by esbuild at bundle time.
@@ -45,14 +59,8 @@ const APP_VERSION: string = typeof __FLOWSPACE_VERSION__ !== 'undefined'
   ? __FLOWSPACE_VERSION__
   : JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8')).version;
 
-// In production (sidecar/Docker), use ~/Library/Application Support/FlowSpace for writable data.
-// In dev, use the project root.
-// FLOWSPACE_DATA_DIR overrides all — used by Docker (set HOME=/data so os.homedir()=/data).
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const DATA_DIR = process.env.FLOWSPACE_DATA_DIR
-  ?? (IS_PRODUCTION
-    ? path.join(os.homedir(), 'Library', 'Application Support', 'FlowSpace')
-    : __dirname);
+const IS_PRODUCTION = isProductionMode();
+const DATA_DIR = getDataDir();
 
 // Ensure data directory exists in production
 if (IS_PRODUCTION && !fs.existsSync(DATA_DIR)) {
@@ -66,7 +74,17 @@ if (!IS_PRODUCTION) dotenv.config(); // also try project root .env in dev
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-app.use(express.json());
+app.use(express.json({ limit: '512kb' }));
+
+// ── HTML escaping utility (for OAuth error pages rendered in the system browser) ──
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 if (process.env.FLOWSPACE_HTTP_DEBUG === '1') {
   app.use((req, res, next) => {
@@ -79,13 +97,36 @@ if (process.env.FLOWSPACE_HTTP_DEBUG === '1') {
   });
 }
 
-// In Tauri production builds, the WebView serves from tauri://localhost
-// while the Express API runs on http://localhost:3000 — allow cross-origin.
-app.use((_req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+// CORS — restrict to known origins (Tauri WebView + dev server).
+// Wildcard CORS would allow any webpage to call our API from the user's browser.
+const ALLOWED_ORIGINS = new Set([
+  'tauri://localhost',
+  `http://localhost:${PORT}`,
+  'http://localhost:5173', // Vite dev server
+]);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  if (_req.method === 'OPTIONS') return res.sendStatus(204);
+  res.header('Access-Control-Allow-Headers', 'Content-Type, X-FlowSpace-Client');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+// ── Auth guard — require a connected Google account for all data endpoints ──
+// Public endpoints that don't need auth: health, version, auth flow, codex status.
+// Note: app.use('/api/') strips the /api prefix from req.path, so match on the remainder.
+const PUBLIC_PATH_PREFIXES = ['/auth/', '/accounts/connect', '/health', '/version', '/codex/'];
+
+app.use('/api/', (req, res, next) => {
+  if (PUBLIC_PATH_PREFIXES.some(prefix => req.path.startsWith(prefix))) return next();
+  const account = getActiveStoredAccount();
+  if (!account) {
+    return res.status(401).json({ error: 'Not authenticated. Sign in with Google first.' });
+  }
   next();
 });
 
@@ -96,6 +137,13 @@ function writeChatEvent(res: express.Response, event: ChatStreamEvent) {
 const RUN_TTL_MS = 24 * 60 * 60 * 1000;
 const runsStore = new Map<string, RunRecord>();
 const runOrder: string[] = [];
+
+// Session-scoped in-memory cache for thread briefs (cleared on server restart)
+const threadBriefCache = new Map<string, { brief: ThreadBrief; cachedAt: string }>();
+
+export function invalidateThreadBrief(threadId: string): void {
+  threadBriefCache.delete(threadId);
+}
 
 function pruneRuns() {
   const now = Date.now();
@@ -158,7 +206,8 @@ function applyToolEventToRun(run: RunRecord, event: ToolEvent, seenToolIds: Set<
 
 function classifyErrorCode(message: string): RunRecord['errorCode'] {
   const lowered = message.toLowerCase();
-  if (lowered.includes('auth') || lowered.includes('unauthorized') || lowered.includes('token')) return 'auth_expired';
+  if (lowered.includes('unauthorized') || lowered.includes('401') || lowered.includes('invalid_api_key') || lowered.includes('authentication failed')) return 'auth_expired';
+  if (lowered.includes('n_keep') || lowered.includes('n_ctx') || lowered.includes('context length') || lowered.includes('context window')) return 'context_overflow';
   if (lowered.includes('rate') || lowered.includes('429')) return 'rate_limited';
   if (lowered.includes('timeout') || lowered.includes('timed out')) return 'tool_timeout';
   if (lowered.includes('invalid') || lowered.includes('required') || lowered.includes('validation')) return 'validation_failed';
@@ -293,7 +342,7 @@ function readAccountsManifest(): AccountsManifest {
 }
 
 function writeAccountsManifest(manifest: AccountsManifest): void {
-  fs.writeFileSync(ACCOUNTS_MANIFEST_PATH, JSON.stringify(manifest, null, 2));
+  fs.writeFileSync(ACCOUNTS_MANIFEST_PATH, JSON.stringify(manifest, null, 2), { mode: 0o600 });
 }
 
 function upsertAccountRecord(account: AccountRecord, makeActive = true): AccountsManifest {
@@ -606,9 +655,14 @@ function loadOAuthClientConfig(): OAuthClientConfig {
 
   // Dev mode fallback: read from file (no injected credentials when running via tsx)
   const candidatePaths = [
+    // Data dir (project root in dev, ~/Library/Application Support/FlowSpace in production)
+    path.join(DATA_DIR, 'client_secret.json'),
+    path.join(os.homedir(), '.flowspace', 'client_secret.json'),
     path.join(os.homedir(), '.config', 'gws', 'client_secret.json'),
+    // Repo-local
     path.join(__dirname, 'client_secret.json'),
     path.join(process.cwd(), 'client_secret.json'),
+    // Tauri bundle locations
     path.join(__dirname, 'src-tauri', 'resources', 'client_secret.json'),
     path.join(process.cwd(), 'src-tauri', 'resources', 'client_secret.json'),
     path.join(__dirname, 'resources', 'client_secret.json'),
@@ -617,6 +671,7 @@ function loadOAuthClientConfig(): OAuthClientConfig {
     path.join(__dirname, '..', '..', 'Resources', 'client_secret.json'),
   ].filter((value, index, values) => values.indexOf(value) === index);
 
+  // Find the first file with valid (non-placeholder) credentials
   for (const filePath of candidatePaths) {
     if (!fs.existsSync(filePath)) continue;
     try {
@@ -676,7 +731,7 @@ async function createStoredAccountFromCredentials(
   }
   const key = sanitizeAccountKey(profile.email);
   const credentialPath = accountCredentialsPath(key);
-  fs.writeFileSync(credentialPath, JSON.stringify(creds, null, 2));
+  fs.writeFileSync(credentialPath, JSON.stringify(creds, null, 2), { mode: 0o600 });
   const now = Date.now();
   const existing = readAccountsManifest().accounts.find((account) => account.email.toLowerCase() === profile.email!.toLowerCase());
   return {
@@ -724,6 +779,18 @@ function driveClient() { return google.drive({ version: 'v3', auth: getAuthClien
 function gmailClient() { return google.gmail({ version: 'v1', auth: getAuthClient() }); }
 function calendarClient() { return google.calendar({ version: 'v3', auth: getAuthClient() }); }
 function tasksClient() { return google.tasks({ version: 'v1', auth: getAuthClient() }); }
+
+function buildSchedulerDeps(): SchedulerDeps {
+  return {
+    gmailSearch: async (query) => {
+      const gmail = gmailClient();
+      const list = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 25 });
+      const msgs = list.data.messages ?? [];
+      return msgs.map(m => ({ threadId: m.threadId!, messageId: m.id! })).filter(x => x.threadId && x.messageId);
+    },
+    now: () => Date.now(),
+  };
+}
 
 async function listAllTaskLists() {
   const tasks = tasksClient();
@@ -897,44 +964,148 @@ function openInSystemBrowser(url: string): void {
   });
 }
 
-app.get('/api/auth/login', (_req, res) => {
-  try {
-    const config = loadOAuthClientConfig();
-    const oauth2Client = new OAuth2Client(config.client_id, config.client_secret, OAUTH_REDIRECT_URI);
-    const state = createOAuthState();
-    const authUrl = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      prompt: 'consent',
-      scope: GOOGLE_SCOPES,
-      state,
+const SUCCESS_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>FlowSpace</title>
+  <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#111;color:#fff}
+  .card{text-align:center;padding:2rem}.check{font-size:3rem;margin-bottom:1rem}h1{font-size:1.25rem;font-weight:600}p{color:#888;font-size:.875rem;margin-top:.5rem}</style></head>
+  <body><div class="card"><div class="check">\u2705</div><h1>Signed in to FlowSpace</h1><p>You can close this tab and return to the app.</p></div>
+  <script>try{window.close()}catch(e){}</script></body></html>`;
+
+function errorHtml(msg: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>FlowSpace</title>
+  <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#111;color:#fff}
+  .card{text-align:center;padding:2rem}h1{font-size:1.25rem;font-weight:600;color:#f87171}p{color:#888;font-size:.875rem;margin-top:.5rem}</style></head>
+  <body><div class="card"><h1>Authentication Failed</h1><p>${escapeHtml(msg.slice(0, 200))}</p><p>Close this tab and try again.</p></div></body></html>`;
+}
+
+/**
+ * Loopback OAuth flow for installed/desktop app clients.
+ *
+ * Spins up a temporary HTTP server on a random port, generates an auth URL
+ * with redirect_uri=http://localhost:<port>, opens it in the system browser,
+ * waits for Google to redirect back with the auth code, exchanges it for tokens,
+ * then stores the credentials and shuts down the temp server.
+ *
+ * This is the correct flow for OAuth clients of type "Desktop app" (installed),
+ * which do not support custom redirect URIs like http://localhost:3000/api/...
+ */
+async function startLoopbackOAuthFlow(opts: {
+  prompt: string;
+}): Promise<{ url: string }> {
+  const config = loadOAuthClientConfig();
+
+  return new Promise((resolve, reject) => {
+    // Spin up a temporary server on an OS-assigned port
+    const tempServer = http.createServer(async (req, httpRes) => {
+      try {
+        const parsed = new URL(req.url ?? '/', 'http://localhost');
+        const code = parsed.searchParams.get('code');
+        const error = parsed.searchParams.get('error');
+
+        if (error) {
+          httpRes.writeHead(200, { 'Content-Type': 'text/html' });
+          httpRes.end(errorHtml(error));
+          tempServer.close();
+          reject(new Error(error));
+          return;
+        }
+
+        if (!code) {
+          httpRes.writeHead(200, { 'Content-Type': 'text/html' });
+          httpRes.end(errorHtml('No authorization code received'));
+          tempServer.close();
+          reject(new Error('No authorization code received'));
+          return;
+        }
+
+        const redirectUri = `http://localhost:${(tempServer.address() as any).port}`;
+        const oauth2Client = new OAuth2Client(config.client_id, config.client_secret, redirectUri);
+        const { tokens } = await oauth2Client.getToken(code);
+
+        if (!tokens.refresh_token) {
+          httpRes.writeHead(200, { 'Content-Type': 'text/html' });
+          httpRes.end(errorHtml('No refresh token received. Please try signing in again.'));
+          tempServer.close();
+          reject(new Error('No refresh token received'));
+          return;
+        }
+
+        const creds: StoredGoogleCredentials = {
+          type: 'authorized_user',
+          client_id: config.client_id,
+          client_secret: config.client_secret,
+          refresh_token: tokens.refresh_token,
+        };
+
+        const account = await createStoredAccountFromCredentials(creds, {
+          authMethod: 'gws',
+          scopes: GOOGLE_SCOPES.map(s => s.split('/').pop() ?? s),
+        });
+        upsertAccountRecord(account, true);
+        clearAllCaches();
+
+        httpRes.writeHead(200, { 'Content-Type': 'text/html' });
+        httpRes.end(SUCCESS_HTML);
+        tempServer.close();
+      } catch (err: any) {
+        console.error('Loopback OAuth callback error:', err.message);
+        httpRes.writeHead(200, { 'Content-Type': 'text/html' });
+        httpRes.end(errorHtml(err.message ?? 'Unknown error'));
+        tempServer.close();
+        reject(err);
+      }
     });
-    openInSystemBrowser(authUrl);
-    res.json({ url: authUrl, opened: true });
+
+    tempServer.listen(0, '127.0.0.1', () => {
+      try {
+        const port = (tempServer.address() as any).port;
+        const redirectUri = `http://localhost:${port}`;
+        const oauth2Client = new OAuth2Client(config.client_id, config.client_secret, redirectUri);
+        const authUrl = oauth2Client.generateAuthUrl({
+          access_type: 'offline',
+          prompt: opts.prompt,
+          scope: GOOGLE_SCOPES,
+        });
+
+        openInSystemBrowser(authUrl);
+        // Resolve immediately — the caller returns the URL to the frontend for window.open fallback
+        resolve({ url: authUrl });
+
+        // Auto-close temp server after 5 minutes if no callback received
+        setTimeout(() => tempServer.close(), 5 * 60 * 1000);
+      } catch (err: any) {
+        tempServer.close();
+        reject(err);
+      }
+    });
+
+    tempServer.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+app.get('/api/auth/login', async (_req, res) => {
+  try {
+    const { url } = await startLoopbackOAuthFlow({ prompt: 'consent' });
+    res.json({ url, opened: true });
   } catch (err: any) {
     console.error('OAuth login error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to start Google sign-in. Check server logs.' });
   }
 });
 
-app.get('/api/accounts/connect', (_req, res) => {
+app.get('/api/accounts/connect', async (_req, res) => {
   try {
-    const config = loadOAuthClientConfig();
-    const oauth2Client = new OAuth2Client(config.client_id, config.client_secret, OAUTH_REDIRECT_URI);
-    const state = createOAuthState();
-    const authUrl = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      prompt: 'select_account consent',
-      scope: GOOGLE_SCOPES,
-      state,
-    });
-    openInSystemBrowser(authUrl);
-    res.json({ url: authUrl, opened: true });
+    const { url } = await startLoopbackOAuthFlow({ prompt: 'select_account consent' });
+    res.json({ url, opened: true });
   } catch (err: any) {
     console.error('OAuth connect error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
+// Legacy callback endpoint — only used when redirect_uri points to this server (web app client).
+// With the loopback flow (installed/desktop client), this endpoint is not invoked.
 app.get('/api/auth/callback', async (req, res) => {
   try {
     const state = typeof req.query.state === 'string' ? req.query.state : '';
@@ -944,8 +1115,8 @@ app.get('/api/auth/callback', async (req, res) => {
 
     const code = typeof req.query.code === 'string' ? req.query.code : '';
     if (!code) {
-      const error = typeof req.query.error === 'string' ? req.query.error : 'No authorization code received';
-      return res.redirect(`/?auth_error=${encodeURIComponent(error)}`);
+      const rawError = typeof req.query.error === 'string' ? req.query.error.slice(0, 200) : 'No authorization code received';
+      return res.redirect(`/?auth_error=${encodeURIComponent(rawError)}`);
     }
 
     const config = loadOAuthClientConfig();
@@ -970,19 +1141,10 @@ app.get('/api/auth/callback', async (req, res) => {
     upsertAccountRecord(account, true);
     clearAllCaches();
 
-    // Return a "close this tab" page — the OAuth happened in the system browser,
-    // and the WebView is polling /api/auth/status to detect success.
-    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>FlowSpace</title>
-      <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#111;color:#fff}
-      .card{text-align:center;padding:2rem}.check{font-size:3rem;margin-bottom:1rem}h1{font-size:1.25rem;font-weight:600}p{color:#888;font-size:.875rem;margin-top:.5rem}</style></head>
-      <body><div class="card"><div class="check">\u2705</div><h1>Signed in to FlowSpace</h1><p>You can close this tab and return to the app.</p></div>
-      <script>try{window.close()}catch(e){}</script></body></html>`);
+    res.send(SUCCESS_HTML);
   } catch (err: any) {
     console.error('OAuth callback error:', err.message);
-    res.status(500).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>FlowSpace</title>
-      <style>body{font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#111;color:#fff}
-      .card{text-align:center;padding:2rem}h1{font-size:1.25rem;font-weight:600;color:#f87171}p{color:#888;font-size:.875rem;margin-top:.5rem}</style></head>
-      <body><div class="card"><h1>Authentication Failed</h1><p>${err.message.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p><p>Close this tab and try again.</p></div></body></html>`);
+    res.status(500).send(errorHtml(err.message ?? 'Unknown error'));
   }
 });
 
@@ -1074,15 +1236,20 @@ const CODEX_CANDIDATES = [
   `${os.homedir()}/.local/bin/codex`,
 ];
 
+let cachedCodexBin: string | null | undefined; // undefined = not yet checked
+
 function findCodexBin(): string | null {
+  if (cachedCodexBin !== undefined) return cachedCodexBin;
   for (const candidate of CODEX_CANDIDATES) {
     try {
       execFileSync(candidate, ['--version'], { stdio: 'ignore', env: shellEnv });
-      return candidate;
+      cachedCodexBin = candidate;
+      return cachedCodexBin;
     } catch {
       // try next
     }
   }
+  cachedCodexBin = null;
   return null;
 }
 
@@ -1106,9 +1273,9 @@ function checkCodexAuth(): { authenticated: boolean; reason: string } {
     if (hasTokens || hasApiKey || hasAuthMode) {
       return { authenticated: true, reason: `auth_mode=${auth.auth_mode}` };
     }
-    return { authenticated: false, reason: `auth.json exists but no tokens/key/mode (keys: ${Object.keys(auth).join(',')})` };
+    return { authenticated: false, reason: 'auth.json exists but contains no valid credentials' };
   } catch (err: any) {
-    return { authenticated: false, reason: `error: ${err?.message}` };
+    return { authenticated: false, reason: 'Failed to read auth.json' };
   }
 }
 
@@ -1676,6 +1843,13 @@ app.post('/api/inbox-actions', async (req, res) => {
       messageId,
       approvalSnapshot,
     });
+    if (validThreadIds) {
+      const acctKey = getActiveStoredAccount()?.key || 'default';
+      for (const tid of validThreadIds) {
+        try { invalidateEnrichmentForThread(acctKey, tid, getScopedDataPath); } catch {}
+        try { invalidateThreadBrief(tid); } catch {}
+      }
+    }
     res.json(result);
   } catch (err: any) {
     console.error('Error executing inbox action:', err && err.message);
@@ -1775,11 +1949,18 @@ app.get('/api/calendar/upcoming', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 app.get('/api/calendar/range', async (req, res) => {
-  const startParam = String(req.query.start ?? '');
-  const endParam = String(req.query.end ?? '');
-  if (!startParam || !endParam) {
+  const rawStart = String(req.query.start ?? '');
+  const rawEnd = String(req.query.end ?? '');
+  if (!rawStart || !rawEnd) {
     return res.status(400).json({ error: 'start and end query params required' });
   }
+  const parsedStart = new Date(rawStart);
+  const parsedEnd = new Date(rawEnd);
+  if (isNaN(parsedStart.getTime()) || isNaN(parsedEnd.getTime())) {
+    return res.status(400).json({ error: 'Invalid date format for start/end' });
+  }
+  const startParam = parsedStart.toISOString();
+  const endParam = parsedEnd.toISOString();
   const cacheKey = `calendar_range_${startParam}_${endParam}`;
   const cached = getCached(cacheKey);
   if (cached) return res.json(cached);
@@ -2024,12 +2205,16 @@ app.put('/api/persona', async (req, res) => {
     if (!persona || typeof persona !== 'object') {
       return res.status(400).json({ error: 'persona object is required' });
     }
+    const serialized = JSON.stringify(persona);
+    if (serialized.length > 10_000) {
+      return res.status(400).json({ error: 'Persona data too large (max 10KB)' });
+    }
 
     const userKey = getCurrentUserPreferenceKey();
     const fs = await import('fs');
     const path = await import('path');
     const personaPath = path.join(DATA_DIR, `.persona.${userKey}.json`);
-    fs.writeFileSync(personaPath, JSON.stringify(persona, null, 2));
+    fs.writeFileSync(personaPath, serialized, { mode: 0o600 });
     personaCache.set(userKey, persona);
 
     res.json({ success: true, persona });
@@ -2066,9 +2251,18 @@ app.put('/api/quick-actions', express.json(), (req, res) => {
   if (!Array.isArray(actions)) {
     return res.status(400).json({ error: 'actions must be an array' });
   }
+  if (actions.length > 20) {
+    return res.status(400).json({ error: 'Too many actions (max 20)' });
+  }
+  for (const action of actions) {
+    if (typeof action?.label !== 'string' || action.label.length > 100 ||
+        typeof action?.prompt !== 'string' || action.prompt.length > 1000) {
+      return res.status(400).json({ error: 'Each action must have label (max 100 chars) and prompt (max 1000 chars)' });
+    }
+  }
   const userKey = getCurrentUserPreferenceKey();
   const filePath = path.join(DATA_DIR, `.quick-actions.${userKey}.json`);
-  fs.writeFileSync(filePath, JSON.stringify(actions, null, 2));
+  fs.writeFileSync(filePath, JSON.stringify(actions, null, 2), { mode: 0o600 });
   quickActionsCache.set(userKey, actions);
   res.json({ success: true, actions });
 });
@@ -2167,6 +2361,9 @@ app.post('/api/chat', async (req, res) => {
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'messages array is required' });
   }
+  if (messages.length > 100) {
+    return res.status(400).json({ error: 'Too many messages (max 100)' });
+  }
 
   if (!isLLMConfigured()) {
     return res.status(500).json({
@@ -2183,15 +2380,24 @@ app.post('/api/chat', async (req, res) => {
     res.json(response);
   } catch (err: any) {
     console.error('Chat error:', err.message || err);
-    res.status(500).json({ error: err.message || 'Chat failed' });
+    res.status(500).json({ error: 'Chat failed' });
   }
 });
 
+function deriveOrigin(eventId: string | undefined, threadBrief: string | undefined): ConversationOrigin {
+  if (eventId) return 'meeting_prep';
+  if (typeof threadBrief === 'string' && threadBrief.toLowerCase().includes('meeting')) return 'meeting_prep';
+  return 'chat';
+}
+
 app.post('/api/chat/stream', async (req, res) => {
-  const { messages, tz, conversationId, sourceMessageId, threadBrief } = req.body;
+  const { messages, tz, conversationId, sourceMessageId, threadBrief, title, eventId } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'messages array is required' });
+  }
+  if (messages.length > 100) {
+    return res.status(400).json({ error: 'Too many messages (max 100)' });
   }
 
   if (!isLLMConfigured()) {
@@ -2232,10 +2438,32 @@ app.post('/api/chat/stream', async (req, res) => {
   try {
     const chatPersona = await loadPersonaForCurrentUser() as unknown as Persona | undefined;
     const userEmail = getActiveStoredAccount()?.email;
+
+    // Update conversation index (best-effort; never blocks the chat request)
+    if (typeof conversationId === 'string' && conversationId && userEmail) {
+      try {
+        const { getUserHash } = await import('./src/lib/user-hash.js');
+        const userHash = getUserHash(userEmail);
+        upsertConversation(userHash, {
+          id: conversationId,
+          title: typeof title === 'string' ? title : undefined,
+          eventId: typeof eventId === 'string' ? eventId : undefined,
+          threadBrief: typeof threadBrief === 'string' ? threadBrief : undefined,
+          origin: deriveOrigin(
+            typeof eventId === 'string' ? eventId : undefined,
+            typeof threadBrief === 'string' ? threadBrief : undefined,
+          ),
+        });
+      } catch (idxErr) {
+        console.warn('[conversation-index] upsert failed (non-fatal):', idxErr);
+      }
+    }
+
     await handleChat(messages, {
       userTz: tz,
       signal: controller.signal,
       runId,
+      conversationId: typeof conversationId === 'string' ? conversationId : undefined,
       sourceMessageId: typeof sourceMessageId === 'string' ? sourceMessageId : undefined,
       threadBrief: typeof threadBrief === 'string' ? threadBrief : undefined,
       persona: chatPersona,
@@ -2332,9 +2560,23 @@ app.post('/api/chat/approve', async (req, res) => {
   });
 
   const userEmail = getActiveStoredAccount()?.email;
+
+  // Update conversation index for the approved run (best-effort)
+  const approvedConvId = run.conversationId;
+  if (approvedConvId && userEmail) {
+    try {
+      const { getUserHash } = await import('./src/lib/user-hash.js');
+      const userHash = getUserHash(userEmail);
+      upsertConversation(userHash, { id: approvedConvId });
+    } catch (idxErr) {
+      console.warn('[conversation-index] approve upsert failed (non-fatal):', idxErr);
+    }
+  }
+
   try {
     await executeApprovedAction(approval, {
       userEmail,
+      conversationId: run.conversationId,
       onEvent: (event) => {
         if (event.type === 'tool_event') {
           run = applyToolEventToRun(run, event.event, seenToolIds);
@@ -2414,8 +2656,16 @@ app.post('/api/memory', express.json(), (req, res) => {
       return res.status(400).json({ error: 'content and category are required' });
     }
 
+    if (typeof content !== 'string' || content.length > 5000) {
+      return res.status(400).json({ error: 'content must be a string (max 5000 chars)' });
+    }
+
     if (!['resource', 'workflow', 'preference', 'fact'].includes(category)) {
       return res.status(400).json({ error: 'Invalid category. Must be: resource, workflow, preference, or fact' });
+    }
+
+    if (tags && (!Array.isArray(tags) || tags.length > 20 || tags.some((t: any) => typeof t !== 'string' || t.length > 50))) {
+      return res.status(400).json({ error: 'tags must be an array of strings (max 20 tags, 50 chars each)' });
     }
 
     const memory = createMemory({
@@ -2673,13 +2923,15 @@ function extractEmailBody(payload: any): string {
   return '';
 }
 
-let lastScanTime = 0;
+const lastScanTimeByAccount = new Map<string, number>();
 const SCAN_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 
 async function scanSentEmailsForCommitments(): Promise<void> {
-  // Throttle: don't scan more than once every 10 minutes
+  // Throttle: don't scan more than once every 10 minutes per account
+  const accountKey = getActiveStoredAccount()?.id ?? 'default';
+  const lastScanTime = lastScanTimeByAccount.get(accountKey) ?? 0;
   if (Date.now() - lastScanTime < SCAN_COOLDOWN_MS) return;
-  lastScanTime = Date.now();
+  lastScanTimeByAccount.set(accountKey, Date.now());
 
   const state = readFollowupState();
   const gmail = gmailClient();
@@ -2869,6 +3121,8 @@ app.post('/api/followups/:taskId/complete', async (req, res) => {
 app.post('/api/followups/:taskId/snooze', async (req, res) => {
   const { due } = req.body;
   if (!due) return res.status(400).json({ error: 'due date is required' });
+  const parsedDue = new Date(due);
+  if (isNaN(parsedDue.getTime())) return res.status(400).json({ error: 'Invalid due date format' });
 
   try {
     const listId = await getOrCreateFollowupTaskList();
@@ -2876,7 +3130,7 @@ app.post('/api/followups/:taskId/snooze', async (req, res) => {
     await tasks.tasks.patch({
       tasklist: listId,
       task: req.params.taskId,
-      requestBody: { due: new Date(due).toISOString() },
+      requestBody: { due: parsedDue.toISOString() },
     });
     res.json({ success: true });
   } catch (err: any) {
@@ -3084,7 +3338,7 @@ app.get('/api/briefing', async (req, res) => {
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
   } else {
-    cache.delete(cacheKey);
+    cache.delete(scopeCacheKey(cacheKey));
   }
 
   try {
@@ -3198,7 +3452,16 @@ app.get('/api/briefing', async (req, res) => {
       `- "${f.commitment}" to ${f.recipient} | Due: ${f.due} | Status: ${f.status}${f.days_overdue ? ` (${f.days_overdue} days overdue)` : ''} | Thread: ${f.subject}`
     ).join('\n');
 
-    const userTz = (typeof req.query.tz === 'string' && req.query.tz) || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let userTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof req.query.tz === 'string' && req.query.tz) {
+      try {
+        // Validate by attempting to use it — throws RangeError if invalid
+        Intl.DateTimeFormat('en-US', { timeZone: req.query.tz });
+        userTz = req.query.tz;
+      } catch {
+        // Invalid timezone — fall back to server default
+      }
+    }
     const localTimeStr = new Date().toLocaleString('en-US', { timeZone: userTz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
     const contextMessage = `User: ${userName}
@@ -3323,7 +3586,7 @@ ${followupContext}`;
     res.json(briefing);
   } catch (err: any) {
     console.error('Briefing error:', err.message);
-    res.json({ error: 'briefing_unavailable', reason: err.message });
+    res.json({ error: 'briefing_unavailable', reason: 'Failed to generate briefing. Check server logs.' });
   }
 });
 
@@ -3336,34 +3599,399 @@ app.post('/api/ai-triage', async (req, res) => {
     return res.status(500).json({ error: 'No LLM provider configured. Open Settings to add an API key.' });
   }
 
-  const { threads } = req.body;
+  const { threads, legacy, requestId } = req.body;
   if (!Array.isArray(threads) || threads.length === 0) {
     return res.status(400).json({ error: 'threads array is required' });
   }
 
+  const capped = threads.slice(0, 25);
+  const startTime = Date.now();
+  const accountKey = getActiveStoredAccount()?.key || 'default';
+  const validIds = new Set(capped.map((t: { id: string }) => t.id));
+
   try {
-    const llmClient = createLLMClient();
-    const systemPrompt = buildTriageSystemPrompt();
-    const userMessage = buildTriageUserMessage(threads);
+    const cache = loadEnrichmentCache(accountKey, getScopedDataPath);
+    const enrichments: any[] = [];
+    const cachedHits: string[] = [];
+    const misses: any[] = [];
 
-    const completion = await callWithRetry(() =>
-      llmClient.complete([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ], { temperature: 0.2 }),
-      1,
-      2000,
-    );
+    for (const t of capped) {
+      const lastMsgId = t.lastMessageId || t.id;
+      const key = `${t.id}:${lastMsgId}`;
+      const entry = cache.entries[key];
+      if (entry && !entry.invalidatedAt && Date.now() < new Date(entry.expiresAt).getTime()) {
+        enrichments.push(entry.enrichment);
+        cachedHits.push(t.id);
+      } else {
+        misses.push(t);
+      }
+    }
 
-    const raw = (completion as any).choices?.[0]?.message?.content ?? '';
-    const validIds = new Set(threads.map((t: { id: string }) => t.id));
-    const result = parseTriageResponse(raw, validIds);
+    if (misses.length > 0) {
+      const llmClient = createLLMClient();
+      const { system, user } = buildListEnrichmentPrompt(misses);
 
-    res.json(result);
+      // Cold-cache full batch can take ~2 min on slow providers (e.g. glm-5.1).
+      // After the first run the cache is warm and this path is rarely hit,
+      // so a generous wall-clock budget is fine. Revisit if we add streaming.
+      const ENRICHMENT_TIMEOUT_MS = 90_000;
+      const completion = await Promise.race([
+        callWithRetry(() =>
+          llmClient.complete([
+            { role: 'system', content: system },
+            { role: 'user', content: user },
+          ], { temperature: 0.2 }),
+          0,
+          0,
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('enrichment_timeout')), ENRICHMENT_TIMEOUT_MS),
+        ),
+      ]);
+
+      const raw = (completion as any).choices?.[0]?.message?.content ?? '';
+      const missIds = new Set(misses.map((t: { id: string }) => t.id));
+      const parsed = parseAiTriageResponse(raw, missIds);
+
+      for (const e of parsed.enrichments) {
+        enrichments.push(e);
+        const lastMsgId = (misses.find((t: any) => t.id === e.threadId) as any)?.lastMessageId || e.threadId;
+        putEnrichment(accountKey, e.threadId, lastMsgId, e, getScopedDataPath);
+      }
+    }
+
+    const failed: string[] = [];
+    for (const id of validIds) {
+      if (!enrichments.find((e: any) => e.threadId === id)) {
+        failed.push(id);
+      }
+    }
+
+    const bucketCounts: Record<string, number> = { needs_reply: 0, waiting: 0, quick_wins: 0, reference_fyi: 0 };
+    for (const e of enrichments) {
+      const b = (e as any).bucket;
+      if (b && b in bucketCounts) bucketCounts[b]++;
+    }
+
+    // Derive legacy categories from enrichments (cheap — no second LLM call).
+    // Per contract §6: include when legacy === true, or as a safety-net when
+    // legacy is omitted (undefined) so existing dashboard callers keep working.
+    let categories: any[] | undefined;
+    if (legacy !== false) {
+      const bucketMap = new Map<string, string[]>();
+      for (const e of enrichments) {
+        const label = (e as any).bucket?.replace(/_/g, ' ') ?? 'other';
+        if (!bucketMap.has(label)) bucketMap.set(label, []);
+        bucketMap.get(label)!.push((e as any).threadId);
+      }
+      if (bucketMap.size > 0) {
+        categories = Array.from(bucketMap.entries()).map(([label, threadIds]) => ({ label, threadIds }));
+      }
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    console.log(JSON.stringify({
+      event: 'gmail_enrichment_batch',
+      batchSize: capped.length,
+      successCount: enrichments.length,
+      successRate: enrichments.length / capped.length,
+      cacheHits: cachedHits.length,
+      cacheHitRate: cachedHits.length / capped.length,
+      durationMs,
+      requestId: requestId || '',
+      accountKey,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json({
+      enrichments,
+      failed,
+      cacheStats: {
+        hits: cachedHits.length,
+        misses: misses.length,
+        totalRequested: capped.length,
+      },
+      bucketCounts,
+      durationMs,
+      ...(categories ? { categories } : {}),
+    });
   } catch (err: any) {
     console.error('[ai-triage] Error:', err.message);
-    res.status(500).json({ error: err.message || 'AI triage failed' });
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      event: 'gmail_enrichment_batch',
+      batchSize: capped.length,
+      successCount: 0,
+      successRate: 0,
+      cacheHits: 0,
+      cacheHitRate: 0,
+      durationMs,
+      requestId: requestId || '',
+      accountKey,
+      timestamp: new Date().toISOString(),
+    }));
+    res.status(500).json({ error: 'enrichment_timeout', failed: [...validIds] });
   }
+});
+
+// ---------------------------------------------------------------------------
+// 8c. GET /api/thread-brief/:threadId — AI decision header for thread reader
+// ---------------------------------------------------------------------------
+
+app.get('/api/thread-brief/:threadId', async (req, res) => {
+  const { threadId } = req.params;
+
+  // Step 1: Validate threadId
+  if (!/^[A-Za-z0-9_-]+$/.test(threadId)) {
+    console.error('[thread-brief] Invalid threadId format:', threadId);
+    return res.status(400).json({ error: 'Invalid threadId format' });
+  }
+
+  const startTime = Date.now();
+  const accountKey = getActiveStoredAccount()?.key || 'default';
+
+  // Step 2: Cache lookup
+  const cached = threadBriefCache.get(threadId);
+  if (cached) {
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      event: 'thread_brief_complete',
+      threadId,
+      success: true,
+      isFallback: cached.brief.isFallback,
+      cacheHit: true,
+      durationMs,
+      accountKey,
+      timestamp: new Date().toISOString(),
+    }));
+    return res.json({ brief: cached.brief, cacheHit: true, durationMs });
+  }
+
+  // Step 3: Fetch thread detail (reuse the same Gmail client + auth as /api/gmail/thread/:threadId)
+  let threadDetail: { id: string; subject: string; messages: Array<{ id: string; from: string; to: string; cc: string; date: string; body: string; bodyType: 'html' | 'text'; attachments: any[] }>; labelIds: string[] } | undefined;
+  try {
+    const gmail = gmailClient();
+    const { data } = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
+    if (!data) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    const msgs = data.messages ?? [];
+    const firstHeaders = msgs[0]?.payload?.headers ?? [];
+    const subject = firstHeaders.find((h) => h.name?.toLowerCase() === 'subject')?.value ?? '';
+
+    function decodeBodyText(payload: any): string {
+      if (payload.body?.data) {
+        return Buffer.from(payload.body.data, 'base64url').toString('utf-8');
+      }
+      const parts = payload.parts ?? [];
+      let html = '';
+      let text = '';
+      for (const part of parts) {
+        if (part.mimeType === 'text/html' && part.body?.data) {
+          html = Buffer.from(part.body.data, 'base64url').toString('utf-8');
+        } else if (part.mimeType === 'text/plain' && part.body?.data) {
+          text = Buffer.from(part.body.data, 'base64url').toString('utf-8');
+        } else if (part.parts) {
+          const nested = decodeBodyText(part);
+          if (!html && nested) html = nested;
+          else if (!text && nested) text = nested;
+        }
+      }
+      return html || text || '';
+    }
+
+    const messages = msgs.map((m) => {
+      const headers = m.payload?.headers ?? [];
+      const getH = (name: string) =>
+        headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? '';
+      return {
+        id: m.id!,
+        from: getH('From'),
+        to: getH('To'),
+        cc: getH('Cc'),
+        date: getH('Date'),
+        body: decodeBodyText(m.payload ?? {}),
+        bodyType: 'text' as const,
+        attachments: [],
+      };
+    });
+
+    threadDetail = {
+      id: data.id!,
+      subject,
+      messages,
+      labelIds: [...new Set(msgs.flatMap((m) => m.labelIds ?? []))],
+    };
+  } catch (fetchErr: any) {
+    const isNotFound =
+      fetchErr?.code === 404 ||
+      fetchErr?.status === 404 ||
+      String(fetchErr?.message).includes('404');
+    if (isNotFound) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+    console.error('[thread-brief] Error fetching thread:', fetchErr.message);
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      event: 'thread_brief_complete',
+      threadId,
+      success: false,
+      isFallback: true,
+      cacheHit: false,
+      durationMs,
+      accountKey,
+      timestamp: new Date().toISOString(),
+    }));
+    return res.status(500).json({ error: 'Failed to fetch thread' });
+  }
+
+  // Helper: build fallback brief
+  function buildFallbackBrief(): ThreadBrief {
+    return {
+      threadId,
+      summary: '',
+      recommendedAction: '',
+      contextChips: computeDeterministicChips(threadDetail!),
+      firstClassActions: [{ kind: 'draft_reply' }],
+      isFallback: true,
+      cachedAt: new Date().toISOString(),
+    };
+  }
+
+  // Step 4: Truncate messages (already done in buildThreadBriefPrompt, but we also limit here)
+  const truncatedMessages = threadDetail.messages.slice(0, 5).map((m) => ({
+    ...m,
+    body: m.body.length > 2000 ? m.body.slice(0, 2000) : m.body,
+  }));
+  const truncatedDetail = { ...threadDetail, messages: truncatedMessages };
+
+  // Step 5: Build prompt
+  const { system, user } = buildThreadBriefPrompt(truncatedDetail);
+
+  // Step 6: LLM call with 5000ms timeout, 0 retries
+  const BRIEF_TIMEOUT_MS = 5000;
+  let rawResponse: string;
+  try {
+    const llmClient = createLLMClient();
+    const completion = await Promise.race([
+      llmClient.complete([
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ], { temperature: 0.3 }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('thread_brief_timeout')), BRIEF_TIMEOUT_MS),
+      ),
+    ]);
+    rawResponse = (completion as any).choices?.[0]?.message?.content ?? '';
+  } catch (llmErr: any) {
+    // Timeout or LLM error → fallback (NOT a 500)
+    const fallback = buildFallbackBrief();
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      event: 'thread_brief_complete',
+      threadId,
+      success: false,
+      isFallback: true,
+      cacheHit: false,
+      durationMs,
+      accountKey,
+      timestamp: new Date().toISOString(),
+    }));
+    return res.json({ brief: fallback, cacheHit: false, durationMs });
+  }
+
+  // Step 7: Parse JSON
+  let parsed: { summary?: string; recommendedAction?: string; contextChips?: ContextChip[]; firstClassActions?: FirstClassAction[] } = {};
+  try {
+    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    const fallback = buildFallbackBrief();
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      event: 'thread_brief_complete',
+      threadId,
+      success: false,
+      isFallback: true,
+      cacheHit: false,
+      durationMs,
+      accountKey,
+      timestamp: new Date().toISOString(),
+    }));
+    return res.json({ brief: fallback, cacheHit: false, durationMs });
+  }
+
+  // Step 8: Cap summary at 140 chars
+  let summary = parsed.summary ?? '';
+  if (summary.length > 140) {
+    summary = summary.slice(0, 137) + '...';
+  }
+
+  // Step 9: Specificity rule — if recommendedAction matches GENERIC_VERBS → fallback
+  const recommendedAction = parsed.recommendedAction ?? '';
+  if (GENERIC_VERBS.test(recommendedAction.trim())) {
+    const fallback = buildFallbackBrief();
+    const durationMs = Date.now() - startTime;
+    console.log(JSON.stringify({
+      event: 'thread_brief_complete',
+      threadId,
+      success: false,
+      isFallback: true,
+      cacheHit: false,
+      durationMs,
+      accountKey,
+      timestamp: new Date().toISOString(),
+    }));
+    return res.json({ brief: fallback, cacheHit: false, durationMs });
+  }
+
+  // Step 10: Merge contextChips — deterministic wins on label ties, cap at 4
+  const deterministicChips = computeDeterministicChips(truncatedDetail);
+  const llmChips: ContextChip[] = Array.isArray(parsed.contextChips) ? parsed.contextChips : [];
+  const mergedChips = new Map<string, ContextChip>();
+  for (const chip of llmChips) mergedChips.set(chip.label, chip);
+  for (const chip of deterministicChips) mergedChips.set(chip.label, chip); // deterministic wins
+  const contextChips = Array.from(mergedChips.values()).slice(0, 4);
+
+  // Step 11: Ensure firstClassActions starts with draft_reply
+  let firstClassActions: FirstClassAction[] = Array.isArray(parsed.firstClassActions)
+    ? parsed.firstClassActions
+    : [];
+  if (!firstClassActions.find((a) => a.kind === 'draft_reply')) {
+    firstClassActions = [{ kind: 'draft_reply' }, ...firstClassActions];
+  }
+
+  // Step 12: Store in cache
+  const nowIso = new Date().toISOString();
+  const brief: ThreadBrief = {
+    threadId,
+    summary,
+    recommendedAction,
+    contextChips,
+    firstClassActions,
+    isFallback: false,
+    cachedAt: nowIso,
+  };
+  threadBriefCache.set(threadId, { brief, cachedAt: nowIso });
+
+  // Step 13: Emit telemetry
+  const durationMs = Date.now() - startTime;
+  console.log(JSON.stringify({
+    event: 'thread_brief_complete',
+    threadId,
+    success: true,
+    isFallback: false,
+    cacheHit: false,
+    durationMs,
+    accountKey,
+    timestamp: new Date().toISOString(),
+  }));
+
+  // Step 14: Return 200
+  return res.json({ brief, cacheHit: false, durationMs } satisfies ThreadBriefResponse);
 });
 
 // ---------------------------------------------------------------------------
@@ -3481,6 +4109,10 @@ app.post('/api/send-reply', async (req, res) => {
       userId: 'me',
       requestBody: { raw, threadId: thread_id },
     });
+
+    const acctKey = getActiveStoredAccount()?.key || 'default';
+    try { invalidateEnrichmentForThread(acctKey, thread_id, getScopedDataPath); } catch {}
+    try { invalidateThreadBrief(thread_id); } catch {}
 
     // Scan the just-sent message for commitments (fire-and-forget)
     if (isLLMConfigured() && data.id) {
@@ -3680,10 +4312,40 @@ app.post('/api/settings/llm/test', async (req, res) => {
   res.json(result);
 });
 
+app.post('/api/settings/llm/test/saved/:providerId', async (req, res) => {
+  const { providerId } = req.params;
+  const settings = readLLMSettings();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const config = (settings?.providers as Record<string, LLMProviderConfig> | undefined)?.[providerId];
+  if (!config) {
+    return res.status(404).json({ error: `Provider '${providerId}' is not configured.` });
+  }
+  const start = Date.now();
+  try {
+    const result = await testConnection(config);
+    res.json({
+      success: result.success,
+      error: result.error,
+      latencyMs: Date.now() - start,
+      testedAt: new Date().toISOString(),
+      configSource: 'saved',
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unexpected error';
+    res.status(500).json({
+      success: false,
+      error: message,
+      latencyMs: Date.now() - start,
+      testedAt: new Date().toISOString(),
+      configSource: 'saved',
+    });
+  }
+});
+
 app.get('/api/settings/llm/providers', (_req, res) => {
   // Merge built-in presets with any custom providers from saved settings
   const builtinIds = new Set(PROVIDER_META.map(p => p.id));
-  const settings = readLLMSettings();
+  const settings = readLLMSettingsMasked();
   const customProviders = settings
     ? Object.values(settings.providers)
         .filter((c): c is NonNullable<typeof c> => c != null && !builtinIds.has(c.provider))
@@ -3720,6 +4382,28 @@ app.delete('/api/settings/llm/providers/:id', (req, res) => {
 // Dynamic tools (skills)
 // ---------------------------------------------------------------------------
 
+app.get('/api/dynamic-tools/triggers/all', async (_req, res) => {
+  try {
+    const tools = getDynamicTools().filter((t) => t.trigger !== undefined);
+    const result = await Promise.all(tools.map(async (t) => {
+      const lastPollAt = await getStateLastPollAt(t.name);
+      const processedCount = await getProcessedCount(t.name);
+      const failures = await getFailures(t.name);
+      const intervalMs = (t.trigger!.intervalMinutes ?? 2) * 60_000;
+      const nextPollIn = t.trigger!.enabled && lastPollAt ? Math.max(0, lastPollAt + intervalMs - Date.now()) : null;
+      return {
+        workflowName: t.name,
+        workflowLabel: t.label ?? t.name,
+        trigger: t.trigger,
+        status: { enabled: t.trigger!.enabled, lastPollAt, processedCount, nextPollIn, failures },
+      };
+    }));
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
 app.get('/api/dynamic-tools', (_req, res) => {
   const tools = getDynamicTools().map((t) => ({
     name: t.name,
@@ -3735,6 +4419,136 @@ app.get('/api/dynamic-tools', (_req, res) => {
 
 app.get('/api/dynamic-tools/actions', (_req, res) => {
   res.json({ actions: getAllowedActions() });
+});
+
+// Plan generation — lightweight LLM call, no tools, no agent loop
+// Must be registered BEFORE /api/dynamic-tools/:name to avoid wildcard capture
+app.post('/api/dynamic-tools/plan', express.json(), async (req: any, res: any) => {
+  const { description, availableActions } = req.body;
+  if (!description || typeof description !== 'string') {
+    return res.status(400).json({ error: 'description is required' });
+  }
+  if (!isLLMConfigured()) {
+    return res.status(500).json({ error: 'No LLM provider configured.' });
+  }
+
+  const prompt = `You are a workflow planning assistant for FlowSpace, a Google Workspace productivity app.
+
+The user wants a reusable workflow:
+"${description}"
+
+Available actions: ${Array.isArray(availableActions) ? availableActions.join(', ') : String(availableActions ?? '')}
+
+Respond with ONLY a JSON object — no markdown fences, no explanation. Use this exact schema:
+{
+  "name": "short_snake_case_name",
+  "label": "Human Readable Name",
+  "description": "One-line description of what this workflow does",
+  "steps": [
+    { "action": "action_name", "args": { "key": "value or {{input.paramName}}" }, "outputKey": "optional_name" }
+  ]
+}
+
+Rules:
+- Only use actions from the available list
+- Keep steps minimal and practical (2–6 steps)
+- Use outputKey when a step's result is referenced by a later step
+- Template syntax: {{input.X}} for workflow inputs, {{steps.N.field}} for step outputs`;
+
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  try {
+    const llmClient = createLLMClient();
+    const response = await llmClient.complete(
+      [{ role: 'user', content: prompt }],
+      { temperature: 0 },
+    );
+    const text = response.choices[0]?.message?.content ?? '';
+    res.write(JSON.stringify({ type: 'assistant_chunk', chunk: text }) + '\n');
+    res.write(JSON.stringify({ type: 'done', accumulated: text }) + '\n');
+    res.end();
+  } catch (err: any) {
+    res.write(JSON.stringify({ type: 'error', error: err?.message || 'Plan generation failed' }) + '\n');
+    res.end();
+  }
+});
+
+// Workflow refinement — apply a conversational edit to an existing plan
+// Must be registered BEFORE /api/dynamic-tools/:name to avoid wildcard capture
+app.post('/api/dynamic-tools/refine', express.json(), async (req: any, res: any) => {
+  const { currentPlan, revision, availableActions, history } = req.body;
+  if (!currentPlan || typeof currentPlan !== 'object') {
+    return res.status(400).json({ error: 'currentPlan is required' });
+  }
+  if (!revision || typeof revision !== 'string') {
+    return res.status(400).json({ error: 'revision is required' });
+  }
+  if (!isLLMConfigured()) {
+    return res.status(500).json({ error: 'No LLM provider configured.' });
+  }
+
+  const safeName = JSON.stringify(typeof currentPlan.name === 'string' ? currentPlan.name : '');
+
+  const systemContext = `You are a workflow editing assistant for FlowSpace, a Google Workspace productivity app.
+
+Current workflow plan:
+${JSON.stringify(currentPlan, null, 2)}
+
+Available actions: ${Array.isArray(availableActions) ? availableActions.join(', ') : ''}
+
+The user wants to refine this workflow. Apply their requested change and return the COMPLETE updated plan JSON.
+Respond with ONLY the JSON object — no markdown fences, no explanation. Use this exact schema:
+{
+  "name": ${safeName},
+  "label": "Human Readable Name",
+  "description": "One-line description of what this workflow does",
+  "steps": [
+    { "action": "action_name", "args": { "key": "value" }, "outputKey": "optional_name" }
+  ]
+}
+
+Rules:
+- Keep the "name" field exactly as ${safeName} — do not rename it
+- Only use actions from the available list
+- Keep steps minimal and practical (2–6 steps)
+- Use outputKey when a step's result is referenced by a later step`;
+
+  const messages: { role: string; content: string }[] = [
+    { role: 'user', content: systemContext },
+  ];
+
+  if (Array.isArray(history)) {
+    for (const turn of history) {
+      if (turn.role === 'user' || turn.role === 'assistant') {
+        messages.push({ role: turn.role, content: String(turn.content) });
+      }
+    }
+  }
+
+  messages.push({ role: 'user', content: revision });
+
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  try {
+    const llmClient = createLLMClient();
+    const response = await llmClient.complete(
+      messages as any,
+      { temperature: 0 },
+    );
+    const text = response.choices[0]?.message?.content ?? '';
+    res.write(JSON.stringify({ type: 'assistant_chunk', chunk: text }) + '\n');
+    res.write(JSON.stringify({ type: 'done', accumulated: text }) + '\n');
+    res.end();
+  } catch (err: any) {
+    res.write(JSON.stringify({ type: 'error', error: err?.message || 'Refinement failed' }) + '\n');
+    res.end();
+  }
 });
 
 app.post('/api/dynamic-tools', express.json(), (req, res) => {
@@ -3753,7 +4567,7 @@ app.post('/api/dynamic-tools', express.json(), (req, res) => {
   res.status(201).json({ tool: created });
 });
 
-app.put('/api/dynamic-tools/:name', express.json(), (req, res) => {
+app.put('/api/dynamic-tools/:name', express.json(), async (req, res) => {
   const { name } = req.params;
   const updates = req.body;
   const existing = getDynamicTool(name);
@@ -3766,13 +4580,407 @@ app.put('/api/dynamic-tools/:name', express.json(), (req, res) => {
     return res.status(400).json({ error: validationError });
   }
   const updated = updateDynamicTool(name, updates);
+  // Restart the scheduler if the trigger config changed; otherwise the old
+  // setInterval keeps firing at the stale interval / on the stale filter.
+  if ('trigger' in updates) {
+    await restartWorkflowScheduler().catch((e) =>
+      console.error('[scheduler] restart after PUT failed', e),
+    );
+  }
   res.json({ tool: updated });
 });
 
-app.delete('/api/dynamic-tools/:name', (req, res) => {
+app.delete('/api/dynamic-tools/:name', async (req, res) => {
   const { name } = req.params;
   const removed = removeDynamicTool(name);
+  // Without a restart the deleted workflow's setInterval handle leaks and
+  // continues firing as a no-op every cycle.
+  if (removed) {
+    await restartWorkflowScheduler().catch((e) =>
+      console.error('[scheduler] restart after DELETE failed', e),
+    );
+  }
   res.json({ removed, name });
+});
+
+app.patch('/api/dynamic-tools/:name/trigger', express.json(), async (req, res) => {
+  try {
+    const { name } = req.params;
+    const tool = getDynamicTool(name);
+    if (!tool) return res.status(404).json({ error: 'Workflow not found' });
+
+    const { enabled, filter, intervalMinutes } = req.body ?? {};
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be boolean' });
+    if (enabled && (typeof filter !== 'string' || filter.trim().length === 0)) {
+      return res.status(400).json({ error: 'filter is required when enabled is true' });
+    }
+    if (typeof filter === 'string' && filter.length > 500) {
+      return res.status(400).json({ error: 'filter must be 500 characters or fewer' });
+    }
+    const interval = typeof intervalMinutes === 'number' && intervalMinutes >= 1 && intervalMinutes <= 60 ? intervalMinutes : 2;
+
+    const trigger = { type: 'email_received' as const, enabled, filter: filter ?? '', intervalMinutes: interval };
+    await updateDynamicTool(name, { trigger });
+    await restartWorkflowScheduler();
+    res.json({ ok: true, trigger });
+  } catch (err: any) {
+    console.error('[trigger] PATCH error', err);
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
+app.get('/api/dynamic-tools/:name/trigger/status', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const tool = getDynamicTool(name);
+    if (!tool) return res.status(404).json({ error: 'Workflow not found' });
+
+    const trigger = tool.trigger;
+    const lastPollAt = await getStateLastPollAt(name);
+    const processedCount = await getProcessedCount(name);
+    const failures = await getFailures(name);
+    const intervalMs = (trigger?.intervalMinutes ?? 2) * 60_000;
+    const nextPollIn = trigger?.enabled && lastPollAt ? Math.max(0, lastPollAt + intervalMs - Date.now()) : null;
+
+    res.json({
+      enabled: trigger?.enabled === true,
+      filter: trigger?.filter ?? null,
+      intervalMinutes: trigger?.intervalMinutes ?? null,
+      lastPollAt,
+      processedCount,
+      nextPollIn,
+      failures,
+    });
+  } catch (err: any) {
+    console.error('[trigger] GET status error', err);
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
+app.post('/api/dynamic-tools/:name/trigger/retrigger', express.json(), async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { messageId } = req.body ?? {};
+    if (typeof messageId !== 'string' || !messageId) return res.status(400).json({ error: 'messageId required' });
+    const gmail = gmailClient();
+    const msg = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'minimal' });
+    const threadId = msg.data.threadId;
+    if (!threadId) return res.status(404).json({ error: 'Message not found' });
+    const result = await executeForMessage(name, messageId, threadId, { clearFailureOnSuccess: true });
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
+app.delete('/api/dynamic-tools/:name/trigger/failures', async (req, res) => {
+  try {
+    await clearFailures(req.params.name);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Workflow Synthesizer (007) — opt-in observation log + settings
+// ---------------------------------------------------------------------------
+
+app.get('/api/synthesizer/settings', async (_req, res) => {
+  try {
+    res.json(await loadSynthSettings());
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
+app.patch('/api/synthesizer/settings', express.json(), async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const allowedKeys = new Set([
+      'enabled',
+      'minOccurrences',
+      'lookBackDays',
+      'maxSequenceLength',
+      'dismissCooldownDays',
+      'logCapEntries',
+      'logRetentionDays',
+    ]);
+    const patch: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(body)) {
+      if (!allowedKeys.has(k)) continue;
+      if (k === 'enabled') {
+        if (typeof v !== 'boolean') {
+          return res.status(400).json({ error: '"enabled" must be a boolean' });
+        }
+        patch[k] = v;
+        continue;
+      }
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        return res.status(400).json({ error: `"${k}" must be a finite number` });
+      }
+      const range = SYNTHESIS_SETTINGS_RANGES[k as keyof typeof SYNTHESIS_SETTINGS_RANGES];
+      if (range && (v < range[0] || v > range[1])) {
+        return res.status(400).json({ error: `"${k}" must be in [${range[0]}, ${range[1]}]` });
+      }
+      patch[k] = v;
+    }
+    const updated = await updateSynthSettings(patch);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message ?? 'Invalid settings' });
+  }
+});
+
+app.get('/api/synthesizer/log', async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit ?? 200);
+    const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 200, 1), 1000);
+    const entries = await loadSynthLog();
+    const newestFirst = [...entries].reverse().slice(0, limit);
+    res.json({ totalEntries: entries.length, entries: newestFirst });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
+app.delete('/api/synthesizer/log', async (_req, res) => {
+  try {
+    const deletedCount = await clearSynthLog();
+    res.json({ cleared: true, deletedCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Internal error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Draft Queue — Proactive Meeting Prep (Phase 1)
+// ---------------------------------------------------------------------------
+
+import {
+  loadDrafts,
+  loadLastScan,
+  upsertByMeetingId,
+  purgeDrafts,
+  findById,
+  updateStatus,
+  updateUseful,
+  markSeen,
+} from './src/agent/draft-store.js';
+import { runHorizonScan } from './src/agent/horizon-scanner.js';
+
+// In-memory flag to prevent concurrent scans
+let scanInProgress = false;
+
+app.post('/api/drafts/scan', async (req, res) => {
+  if (scanInProgress) {
+    return res.status(409).json({ error: 'Scan already in progress' });
+  }
+
+  const account = getActiveStoredAccount();
+  if (!account) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  // Derive selfDomain from account email
+  const selfDomain = account.email.split('@')[1] ?? '';
+
+  scanInProgress = true;
+  try {
+    const result = await runHorizonScan({
+      selfDomain,
+      userEmail: account.email,
+      // Inject direct Google Calendar fetcher so attendees are available
+      fetchCalendarEvents: async (timeMin: string, timeMax: string) => {
+        const calendar = calendarClient();
+        const calListRes = await calendar.calendarList.list({ showHidden: false });
+        const calendars = (calListRes.data.items ?? []).filter(
+          (c) => c.selected !== false && c.id,
+        );
+        const allEvents = await Promise.all(
+          calendars.map(async (cal) => {
+            try {
+              const { data } = await calendar.events.list({
+                calendarId: cal.id!,
+                timeMin,
+                timeMax,
+                singleEvents: true,
+                orderBy: 'startTime',
+                maxResults: 50,
+              });
+              return (data.items ?? []).map((ev) => ({
+                id: ev.id ?? undefined,
+                summary: ev.summary ?? undefined,
+                start: ev.start?.dateTime ? { dateTime: ev.start.dateTime } : ev.start?.date,
+                end: ev.end?.dateTime ? { dateTime: ev.end.dateTime } : ev.end?.date,
+                attendees: (ev.attendees ?? []).map((a) => ({
+                  email: a.email ?? undefined,
+                  self: a.self ?? false,
+                })),
+              }));
+            } catch {
+              return [];
+            }
+          }),
+        );
+        return allEvents.flat();
+      },
+    });
+    upsertByMeetingId(DATA_DIR, result.drafts, result.meta);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Scan failed' });
+  } finally {
+    scanInProgress = false;
+  }
+});
+
+app.get('/api/drafts', (req, res) => {
+  purgeDrafts(DATA_DIR);
+  const drafts = loadDrafts(DATA_DIR);
+  const lastScan = loadLastScan(DATA_DIR);
+
+  // Mark all pending drafts as seen
+  const pendingIds = drafts.filter((d) => d.status === 'pending' && !d.seenAt).map((d) => d.id);
+  if (pendingIds.length > 0) markSeen(DATA_DIR, pendingIds);
+
+  // Re-read after markSeen so seenAt is populated in the response
+  const updatedDrafts = loadDrafts(DATA_DIR);
+  const sorted = [...updatedDrafts].sort(
+    (a, b) => new Date(a.meetingTime).getTime() - new Date(b.meetingTime).getTime(),
+  );
+
+  res.json({ drafts: sorted, lastScan: lastScan ?? null });
+});
+
+app.post('/api/drafts/:id/approve', (req, res) => {
+  const { id } = req.params;
+  const draft = findById(DATA_DIR, id);
+  if (!draft) return res.status(404).json({ error: 'Draft not found' });
+  if (draft.status === 'approved') return res.status(409).json({ error: 'Draft already approved' });
+
+  const updated = updateStatus(DATA_DIR, id, 'approved');
+  if (!updated) return res.status(404).json({ error: 'Draft not found' });
+
+  const meetingDate = new Date(updated.meetingTime);
+  const dateStr = meetingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const timeStr = meetingDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  const sourcesSection: string[] = [];
+  if (updated.relatedEmails.length > 0) {
+    sourcesSection.push('Sources used to generate this brief:');
+    for (const email of updated.relatedEmails.slice(0, 5)) {
+      sourcesSection.push(`- Email from ${email.from}: "${email.subject}"`);
+    }
+  }
+  if (updated.linkedDocs.length > 0) {
+    if (sourcesSection.length === 0) sourcesSection.push('Sources used to generate this brief:');
+    for (const doc of updated.linkedDocs.slice(0, 5)) {
+      sourcesSection.push(`- Drive file: "${doc.title}"`);
+    }
+  }
+  if (sourcesSection.length > 0) {
+    sourcesSection.push('');
+    sourcesSection.push('The user may ask about any of these sources. Use search_emails and search_drive to look up full content if needed.');
+  }
+
+  const threadBrief = [
+    `## Meeting Prep: ${updated.meetingTitle}`,
+    `**When:** ${dateStr} at ${timeStr}`,
+    `**Attendees:** ${updated.attendees.slice(0, 5).join(', ')}`,
+    '',
+    updated.summary,
+    ...(sourcesSection.length > 0 ? ['', ...sourcesSection] : []),
+  ].join('\n');
+
+  const sources = {
+    emails: updated.relatedEmails,
+    docs: updated.linkedDocs,
+    attendees: updated.attendees,
+    meetingTitle: updated.meetingTitle,
+    meetingTime: updated.meetingTime,
+  };
+
+  res.json({ draft: updated, threadBrief, sources });
+});
+
+app.post('/api/drafts/:id/dismiss', (req, res) => {
+  const { id } = req.params;
+  const draft = findById(DATA_DIR, id);
+  if (!draft) return res.status(404).json({ error: 'Draft not found' });
+
+  updateStatus(DATA_DIR, id, 'dismissed');
+  res.json({ success: true });
+});
+
+app.patch('/api/drafts/:id/useful', (req, res) => {
+  const { id } = req.params;
+  const { useful } = req.body as { useful?: boolean };
+  if (typeof useful !== 'boolean') {
+    return res.status(400).json({ error: 'useful must be a boolean' });
+  }
+
+  const draft = findById(DATA_DIR, id);
+  if (!draft) return res.status(404).json({ error: 'Draft not found' });
+
+  updateUseful(DATA_DIR, id, useful);
+  res.json({ success: true, useful });
+});
+
+// ---------------------------------------------------------------------------
+// Telemetry endpoints
+// ---------------------------------------------------------------------------
+
+app.post('/api/telemetry/fallback', (req, res) => {
+  const { reason } = req.body as { reason?: string };
+  if (!reason || !['upstream_error', 'timeout', 'rate_limited'].includes(reason)) {
+    return res.status(400).json({ error: 'Invalid reason' });
+  }
+  const accountKey = getActiveStoredAccount()?.key || 'default';
+  console.log(JSON.stringify({ event: 'gmail_tab_fallback', reason, accountKey, timestamp: new Date().toISOString() }));
+  res.json({ ok: true });
+});
+
+app.post('/api/telemetry/gmail-interactive', (req, res) => {
+  const { msFromOpen, threadCount } = req.body as { msFromOpen?: number; threadCount?: number };
+  if (typeof msFromOpen !== 'number' || typeof threadCount !== 'number') {
+    return res.status(400).json({ error: 'msFromOpen and threadCount must be numbers' });
+  }
+  const accountKey = getActiveStoredAccount()?.key || 'default';
+  console.log(JSON.stringify({ event: 'gmail_tab_interactive', msFromOpen, threadCount, accountKey, timestamp: new Date().toISOString() }));
+  res.json({ ok: true });
+});
+
+app.post('/api/telemetry/gmail-workspace-open', express.json(), (req, res) => {
+  const { threadType, paneKind, durationMs, threadId } = (req.body ?? {}) as {
+    threadType?: unknown;
+    paneKind?: unknown;
+    durationMs?: unknown;
+    threadId?: unknown;
+  };
+  if (typeof threadType !== 'string' || !threadType) {
+    return res.status(400).json({ error: 'threadType must be a non-empty string' });
+  }
+  if (typeof paneKind !== 'string' || !paneKind) {
+    return res.status(400).json({ error: 'paneKind must be a non-empty string' });
+  }
+  if (typeof durationMs !== 'number') {
+    return res.status(400).json({ error: 'durationMs must be a number' });
+  }
+  if (typeof threadId !== 'string' || !threadId) {
+    return res.status(400).json({ error: 'threadId must be a non-empty string' });
+  }
+  const accountKey = getActiveStoredAccount()?.key || 'default';
+  console.log(JSON.stringify({
+    event: 'gmail_workspace_open',
+    threadType,
+    paneKind,
+    durationMs,
+    threadId,
+    accountKey,
+    timestamp: new Date().toISOString(),
+  }));
+  res.json({});
 });
 
 // ---------------------------------------------------------------------------
@@ -3782,6 +4990,11 @@ app.delete('/api/dynamic-tools/:name', (req, res) => {
 async function startServer() {
   await migrateLegacyGwsCredentials();
   loadDynamicTools();
+  try {
+    startWorkflowScheduler(buildSchedulerDeps());
+  } catch (err) {
+    console.error('[scheduler] failed to start at boot', err);
+  }
   const nodeMajor = Number(process.versions.node.split('.')[0] || '0');
   if (IS_PRODUCTION) {
     // In production, serve static frontend files
@@ -3825,7 +5038,9 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  // Bind to localhost only — prevents LAN access. Docker forwards ports externally.
+  const BIND_HOST = process.env.FLOWSPACE_BIND_HOST || '127.0.0.1';
+  app.listen(PORT, BIND_HOST, () => {
     console.log(`FlowSpace server running on http://localhost:${PORT}`);
     if (getActiveStoredAccount()) {
       console.log('Google account registry loaded successfully');
@@ -3842,3 +5057,5 @@ async function startServer() {
 }
 
 startServer();
+
+export { app };

@@ -41,9 +41,9 @@ describe('InboxTriage', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ignore' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Important' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Not important' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ignore:/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Mark important:/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Mark not important:/i }));
 
     expect(onIgnore).toHaveBeenCalledWith(expect.objectContaining({ entity_id: 'thread-1' }));
     expect(onImportant).toHaveBeenCalledWith(expect.objectContaining({ entity_id: 'thread-1' }));
@@ -73,7 +73,7 @@ describe('InboxTriage', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ignore' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Ignore:/i }));
 
     expect(onIgnore).toHaveBeenCalledWith(expect.objectContaining({
       scope: 'triage_item',

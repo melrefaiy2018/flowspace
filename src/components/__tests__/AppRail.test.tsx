@@ -5,6 +5,11 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AppRail from '../AppRail';
 import { DEFAULT_THREAD_GROUP_ID, type Conversation, type ThreadGroup } from '../../context/ChatContext';
+import { ThemeProvider } from '../../context/ThemeContext';
+
+function renderWithTheme(ui: React.ReactElement) {
+  return render(<ThemeProvider>{ui}</ThemeProvider>);
+}
 
 vi.mock('../FlowSpaceLogo', () => ({
   default: () => <div data-testid="logo" />,
@@ -55,7 +60,7 @@ describe('AppRail', () => {
     const onSwitchConversation = vi.fn();
     const onDeleteConversation = vi.fn();
 
-    render(
+    renderWithTheme(
       <AppRail
         user={{ name: 'Test User', email: 'test@example.com' }}
         onAction={vi.fn()}
@@ -80,33 +85,35 @@ describe('AppRail', () => {
     fireEvent.click(screen.getByText('Older chat'));
     expect(onSwitchConversation).toHaveBeenCalledWith('older');
 
-    const deleteButtons = screen.getAllByTitle('Delete conversation');
+    const deleteButtons = screen.getAllByRole('button', { name: /Delete:/i });
     fireEvent.click(deleteButtons[0]);
     expect(onDeleteConversation).toHaveBeenCalled();
   });
 
-  it('shows New chat action in the rail', () => {
-    const onNewChat = vi.fn();
+  it('renders main nav items (Home, Mail, Calendar, Tasks, Workflows)', () => {
+    const onNavigate = vi.fn();
 
-    render(
+    renderWithTheme(
       <AppRail
         user={{ name: 'Test User', email: 'test@example.com' }}
         onAction={vi.fn()}
         activeSection="home"
-        onNavigate={vi.fn()}
+        onNavigate={onNavigate}
         threadGroups={threadGroups}
         conversations={[]}
         currentConversationId={null}
         onSwitchConversation={vi.fn()}
         onDeleteConversation={vi.fn()}
-        onNewChat={onNewChat}
+        onNewChat={vi.fn()}
         onCreateThreadGroup={vi.fn()}
         onRenameThreadGroup={vi.fn()}
         onDeleteThreadGroup={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getAllByText('New chat')[0]);
-    expect(onNewChat).toHaveBeenCalled();
+    // Mail nav item should be visible
+    expect(screen.getByText('Mail')).toBeTruthy();
+    expect(screen.getByText('Calendar')).toBeTruthy();
+    expect(screen.getByText('Workflows')).toBeTruthy();
   });
 });

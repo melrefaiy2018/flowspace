@@ -434,23 +434,6 @@ var B = class {
     }
   }
 };
-var kt = class extends B {
-  get cursor() {
-    return this.value ? 0 : 1;
-  }
-  get _value() {
-    return this.cursor === 0;
-  }
-  constructor(e) {
-    super(e, false), this.value = !!e.initialValue, this.on("userInput", () => {
-      this.value = this._value;
-    }), this.on("confirm", (s) => {
-      this.output.write(import_sisteransi.cursor.move(0, -1)), this.value = s, this.state = "submit", this.close();
-    }), this.on("cursor", () => {
-      this.value = !this.value;
-    });
-  }
-};
 var Tt = class extends B {
   options;
   cursor = 0;
@@ -757,33 +740,6 @@ var X2 = ({ cursor: e, options: r, style: s, output: i = process.stdout, maxItem
   for (const A of d) for (const b of A) C.push(b);
   return $ && C.push(c), C;
 };
-var Rt = (e) => {
-  const r = e.active ?? "Yes", s = e.inactive ?? "No";
-  return new kt({ active: r, inactive: s, signal: e.signal, input: e.input, output: e.output, initialValue: e.initialValue ?? true, render() {
-    const i = e.withGuide ?? _.withGuide, a = `${i ? `${t("gray", h)}
-` : ""}${W2(this.state)}  ${e.message}
-`, o = this.value ? r : s;
-    switch (this.state) {
-      case "submit": {
-        const u = i ? `${t("gray", h)}  ` : "";
-        return `${a}${u}${t("dim", o)}`;
-      }
-      case "cancel": {
-        const u = i ? `${t("gray", h)}  ` : "";
-        return `${a}${u}${t(["strikethrough", "dim"], o)}${i ? `
-${t("gray", h)}` : ""}`;
-      }
-      default: {
-        const u = i ? `${t("cyan", h)}  ` : "", l = i ? t("cyan", x2) : "";
-        return `${a}${u}${this.value ? `${t("green", z2)} ${r}` : `${t("dim", H2)} ${t("dim", r)}`}${e.vertical ? i ? `
-${t("cyan", h)}  ` : `
-` : ` ${t("dim", "/")} `}${this.value ? `${t("dim", H2)} ${t("dim", s)}` : `${t("green", z2)} ${s}`}
-${l}
-`;
-      }
-    }
-  } }).prompt();
-};
 var R2 = { message: (e = [], { symbol: r = t("gray", h), secondarySymbol: s = t("gray", h), output: i = process.stdout, spacing: a = 1, withGuide: o } = {}) => {
   const u = [], l = o ?? _.withGuide, n = l ? s : "", c = l ? `${r}  ` : "", p = l ? `${s}  ` : "";
   for (let g = 0; g < a; g++) u.push(n);
@@ -981,20 +937,17 @@ ${l}
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { spawn, execFileSync } from "node:child_process";
+import { execSync, spawn, execFileSync } from "node:child_process";
 import net from "node:net";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 var __dirname = path.dirname(fileURLToPath(import.meta.url));
-var FLOWSPACE_DIR = path.join(os.homedir(), "Library", "Application Support", "FlowSpace");
-var LEGACY_FLOWSPACE_DIR = path.join(os.homedir(), ".flowspace");
+var FLOWSPACE_DIR = process.platform === "darwin" ? path.join(os.homedir(), "Library", "Application Support", "FlowSpace") : path.join(os.homedir(), ".flowspace");
 var CONFIG_PATH = path.join(FLOWSPACE_DIR, "config.json");
 var CLIENT_SECRET_PATH = path.join(FLOWSPACE_DIR, "client_secret.json");
 var DEFAULT_PORT = 3e3;
 var REQUIRED_NODE_MAJOR = 20;
 function getVersion() {
-  if (!"1.2.12".includes("__CLI")) {
-    return "1.2.12";
-  }
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
     return pkg.version ?? "0.0.0";
@@ -1013,7 +966,7 @@ function isPortAvailable(port) {
     server.once("listening", () => {
       server.close(() => resolve(true));
     });
-    server.listen(port, "0.0.0.0");
+    server.listen(port, "127.0.0.1");
   });
 }
 function ensureDir(dir) {
@@ -1090,7 +1043,6 @@ async function runSetupWizard() {
   const port = DEFAULT_PORT;
   const config = {
     version: 1,
-    appVersion: getVersion(),
     google: googleSection,
     ai: aiSection,
     port
@@ -1117,9 +1069,7 @@ async function setupAI() {
       { value: "openai", label: "OpenAI", hint: "GPT-4o, GPT-4" },
       { value: "anthropic", label: "Anthropic", hint: "Claude" },
       { value: "openrouter", label: "OpenRouter", hint: "Multiple models" },
-      { value: "codex", label: "Codex (ChatGPT Plus/Pro)", hint: "Sign in with ChatGPT \u2014 no API key needed" },
       { value: "lmstudio", label: "LM Studio", hint: "Local models, no API key needed" },
-      { value: "custom", label: "Custom (OpenAI-compatible)", hint: "Any OpenAI-compatible API" },
       { value: "skip", label: "Skip for now", hint: "Dashboard works without AI" }
     ]
   });
@@ -1130,51 +1080,6 @@ async function setupAI() {
   if (aiChoice === "skip") {
     R2.info("AI skipped. You can configure it later in Settings.");
     return { configured: false };
-  }
-  if (aiChoice === "codex") {
-    const { execSync: execSync2 } = await import("child_process");
-    let codexFound = false;
-    try {
-      execSync2("codex --version", { stdio: "ignore" });
-      codexFound = true;
-    } catch {
-    }
-    if (!codexFound) {
-      const s = be();
-      s.start("Installing @openai/codex globally...");
-      try {
-        execSync2("npm install -g @openai/codex", { stdio: "ignore" });
-        s.stop("@openai/codex installed");
-      } catch {
-        s.stop("");
-        R2.warn("Could not install @openai/codex automatically.");
-        R2.info("Run manually: npm install -g @openai/codex");
-        R2.info("Then run: codex login");
-        return { configured: false };
-      }
-    }
-    R2.info("Opening browser for ChatGPT sign-in...");
-    try {
-      execSync2("codex login", { stdio: "inherit" });
-    } catch {
-      R2.warn("codex login failed or was cancelled.");
-      R2.info('Run "codex login" manually, then restart flowspace.');
-      return { configured: false };
-    }
-    const llmSettings2 = {
-      activeProvider: "codex",
-      providers: {
-        codex: {
-          provider: "codex",
-          apiKey: "",
-          model: "o4-mini"
-        }
-      }
-    };
-    const settingsPath2 = path.join(FLOWSPACE_DIR, ".llm-settings.json");
-    fs.writeFileSync(settingsPath2, JSON.stringify(llmSettings2, null, 2), { mode: 384 });
-    R2.success("Codex (ChatGPT) configured!");
-    return { configured: true, provider: "codex" };
   }
   if (aiChoice === "lmstudio") {
     R2.info("LM Studio detected. Make sure it's running on http://localhost:1234");
@@ -1189,83 +1094,16 @@ async function setupAI() {
         }
       }
     };
+    ensureDir(FLOWSPACE_DIR);
     const settingsPath2 = path.join(FLOWSPACE_DIR, ".llm-settings.json");
     fs.writeFileSync(settingsPath2, JSON.stringify(llmSettings2, null, 2), { mode: 384 });
     return { configured: true, provider: "lmstudio" };
-  }
-  if (aiChoice === "custom") {
-    const customName = await Zt({
-      message: "Provider name (display name):",
-      placeholder: "My Provider",
-      validate: (value) => {
-        if (!value || !value.trim()) return "Provider name is required.";
-        return void 0;
-      }
-    });
-    if (Ct(customName)) {
-      Nt("Setup cancelled.");
-      process.exit(0);
-    }
-    const customBaseUrl = await Zt({
-      message: "Base URL (OpenAI-compatible endpoint):",
-      placeholder: "https://api.example.com/v1",
-      validate: (value) => {
-        if (!value || !value.trim()) return "Base URL is required.";
-        try {
-          new URL(value.trim());
-        } catch {
-          return "Please enter a valid URL.";
-        }
-        return void 0;
-      }
-    });
-    if (Ct(customBaseUrl)) {
-      Nt("Setup cancelled.");
-      process.exit(0);
-    }
-    const customApiKey = await Zt({
-      message: "API key (leave empty if not required):",
-      placeholder: "sk-..."
-    });
-    if (Ct(customApiKey)) {
-      Nt("Setup cancelled.");
-      process.exit(0);
-    }
-    const customModel = await Zt({
-      message: "Model name:",
-      placeholder: "gpt-4o",
-      validate: (value) => {
-        if (!value || !value.trim()) return "Model name is required.";
-        return void 0;
-      }
-    });
-    if (Ct(customModel)) {
-      Nt("Setup cancelled.");
-      process.exit(0);
-    }
-    const providerId = customName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const llmSettings2 = {
-      activeProvider: providerId,
-      providers: {
-        [providerId]: {
-          provider: providerId,
-          name: customName.trim(),
-          apiKey: customApiKey.trim() || "none",
-          model: customModel.trim(),
-          baseUrl: customBaseUrl.trim()
-        }
-      }
-    };
-    const settingsPath2 = path.join(FLOWSPACE_DIR, ".llm-settings.json");
-    fs.writeFileSync(settingsPath2, JSON.stringify(llmSettings2, null, 2), { mode: 384 });
-    R2.success(`${customName.trim()} configured!`);
-    return { configured: true, provider: providerId };
   }
   const apiKey = await Zt({
     message: `Enter your ${aiChoice === "openai" ? "OpenAI" : aiChoice === "anthropic" ? "Anthropic" : "OpenRouter"} API key:`,
     placeholder: "sk-...",
     validate: (value) => {
-      if (!value || !value.trim()) return "API key is required.";
+      if (!value.trim()) return "API key is required.";
       if (value.trim().length < 10) return "That doesn't look like a valid API key.";
       return void 0;
     }
@@ -1289,15 +1127,56 @@ async function setupAI() {
       }
     }
   };
+  ensureDir(FLOWSPACE_DIR);
   const settingsPath = path.join(FLOWSPACE_DIR, ".llm-settings.json");
   fs.writeFileSync(settingsPath, JSON.stringify(llmSettings, null, 2), { mode: 384 });
   R2.success(`${aiChoice} configured!`);
   return { configured: true, provider: aiChoice };
 }
+function openBrowser(url) {
+  const platform = process.platform;
+  try {
+    if (platform === "darwin") {
+      execSync(`open "${url}"`, { stdio: "ignore" });
+    } else if (platform === "win32") {
+      execSync(`start "" "${url}"`, { stdio: "ignore", shell: true });
+    } else {
+      execSync(`xdg-open "${url}"`, { stdio: "ignore" });
+    }
+  } catch {
+  }
+}
+function waitForServer(port, maxWaitMs = 15e3) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    function poll() {
+      const req = http.get(`http://localhost:${port}`, (res) => {
+        res.destroy();
+        resolve(true);
+      });
+      req.on("error", () => {
+        if (Date.now() - start >= maxWaitMs) {
+          resolve(false);
+        } else {
+          setTimeout(poll, 300);
+        }
+      });
+      req.setTimeout(500, () => {
+        req.destroy();
+        if (Date.now() - start >= maxWaitMs) {
+          resolve(false);
+        } else {
+          setTimeout(poll, 300);
+        }
+      });
+    }
+    poll();
+  });
+}
 async function startServer(port) {
   const candidates = [
     path.join(__dirname, "..", "dist-server", "server.mjs"),
-    // Pre-bundled (release)
+    // Pre-bundled (npm package)
     path.join(__dirname, "..", "server.ts")
     // Dev mode (git clone)
   ];
@@ -1309,6 +1188,25 @@ ${candidates.map((c) => `  - ${c}`).join("\n")}`);
     process.exit(1);
   }
   const isBundled = serverPath.endsWith(".mjs");
+  const repoRoot = path.join(__dirname, "..");
+  const distDir = path.join(repoRoot, "dist");
+  if (!fs.existsSync(path.join(distDir, "index.html"))) {
+    const buildSpinner = be();
+    buildSpinner.start("Building frontend (first run)...");
+    try {
+      execSync("npm run build", {
+        stdio: "pipe",
+        cwd: repoRoot,
+        timeout: 12e4,
+        env: getShellEnv()
+      });
+      buildSpinner.stop("Frontend built.");
+    } catch (err) {
+      buildSpinner.stop("Frontend build failed.");
+      R2.error("Could not build the frontend. Run `npm run build` manually and try again.");
+      process.exit(1);
+    }
+  }
   console.log("");
   console.log(`  FlowSpace v${getVersion()}`);
   console.log(`  http://localhost:${port}`);
@@ -1318,15 +1216,22 @@ ${candidates.map((c) => `  - ${c}`).join("\n")}`);
   const env = {
     ...getShellEnv(),
     FLOWSPACE_DATA_DIR: FLOWSPACE_DIR,
-    PORT: String(port),
-    NODE_ENV: isBundled ? "production" : process.env.NODE_ENV ?? "development"
+    NODE_ENV: "production",
+    PORT: String(port)
   };
-  if (fs.existsSync(CLIENT_SECRET_PATH)) {
-    const gwsConfigDir = path.join(os.homedir(), ".config", "gws");
-    ensureDir(gwsConfigDir);
-    const gwsSecretDest = path.join(gwsConfigDir, "client_secret.json");
-    if (!fs.existsSync(gwsSecretDest) || !hasValidClientSecret(gwsSecretDest)) {
-      fs.copyFileSync(CLIENT_SECRET_PATH, gwsSecretDest);
+  if (!fs.existsSync(CLIENT_SECRET_PATH) || !hasValidClientSecret(CLIENT_SECRET_PATH)) {
+    const fallbackLocations = [
+      path.join(os.homedir(), ".config", "gws", "client_secret.json"),
+      path.join(repoRoot, "client_secret.json"),
+      path.join(repoRoot, "src-tauri", "resources", "client_secret.json")
+    ];
+    for (const loc of fallbackLocations) {
+      if (fs.existsSync(loc) && hasValidClientSecret(loc)) {
+        ensureDir(FLOWSPACE_DIR);
+        fs.copyFileSync(loc, CLIENT_SECRET_PATH);
+        fs.chmodSync(CLIENT_SECRET_PATH, 384);
+        break;
+      }
     }
   }
   const child = spawn(
@@ -1353,26 +1258,13 @@ ${candidates.map((c) => `  - ${c}`).join("\n")}`);
       child.kill(sig);
     });
   }
-}
-function migrateLegacyData() {
-  if (!fs.existsSync(LEGACY_FLOWSPACE_DIR)) return;
-  ensureDir(FLOWSPACE_DIR);
-  const filesToMigrate = ["config.json", "client_secret.json", ".llm-settings.json", ".env"];
-  for (const file of filesToMigrate) {
-    const src = path.join(LEGACY_FLOWSPACE_DIR, file);
-    const dest = path.join(FLOWSPACE_DIR, file);
-    if (fs.existsSync(src) && !fs.existsSync(dest)) {
-      try {
-        fs.copyFileSync(src, dest);
-        fs.chmodSync(dest, 384);
-      } catch {
-      }
-    }
-  }
+  const url = `http://localhost:${port}`;
+  waitForServer(port).then((ready) => {
+    if (ready) openBrowser(url);
+  });
 }
 async function main() {
   const args = process.argv.slice(2);
-  migrateLegacyData();
   if (args.includes("--version") || args.includes("-v")) {
     console.log(`flowspace v${getVersion()}`);
     return;
@@ -1382,10 +1274,9 @@ async function main() {
   flowspace \u2014 Personal Google Workspace dashboard with AI assistant
 
   Usage:
-    flowspace            Start FlowSpace (runs setup on first use)
-    flowspace setup      Re-run the setup wizard
-    flowspace doctor     Check system health
-    flowspace reset      Delete all settings for a clean start
+    npx flowspace            Start FlowSpace (runs setup on first use)
+    npx flowspace setup      Re-run the setup wizard
+    npx flowspace doctor     Check system health
 
   Options:
     --port <number>   Use a specific port (default: 3000)
@@ -1407,26 +1298,6 @@ async function main() {
     await runDoctor();
     return;
   }
-  if (subcommand === "reset") {
-    Wt2("FlowSpace Reset");
-    const confirm = await Rt({
-      message: `Delete all FlowSpace settings in ${FLOWSPACE_DIR}? This cannot be undone.`
-    });
-    if (Ct(confirm) || !confirm) {
-      Nt("Cancelled.");
-      process.exit(0);
-    }
-    if (fs.existsSync(FLOWSPACE_DIR)) {
-      fs.readdirSync(FLOWSPACE_DIR).forEach((f) => {
-        try {
-          fs.rmSync(path.join(FLOWSPACE_DIR, f), { recursive: true });
-        } catch {
-        }
-      });
-    }
-    Gt('All settings cleared. Run "flowspace" to set up again.');
-    return;
-  }
   if (!checkNodeVersion()) {
     console.error(`
   FlowSpace requires Node.js ${REQUIRED_NODE_MAJOR}+. You have ${process.versions.node}.
@@ -1437,85 +1308,18 @@ async function main() {
   const port = portIdx >= 0 ? parseInt(args[portIdx + 1], 10) || DEFAULT_PORT : DEFAULT_PORT;
   let config = readConfig();
   if (!config) {
-    const hasExistingData = fs.existsSync(FLOWSPACE_DIR) && fs.readdirSync(FLOWSPACE_DIR).some((f) => [".llm-settings.json", ".tokens.json", ".accounts.json"].includes(f));
+    const hasExistingData = fs.existsSync(FLOWSPACE_DIR) && fs.readdirSync(FLOWSPACE_DIR).some(
+      (f) => [".llm-settings.json", ".tokens.json", ".accounts.json", "client_secret.json"].includes(f)
+    );
     if (hasExistingData) {
-      Wt2("Welcome back to FlowSpace");
-      Vt2(
-        "An existing FlowSpace installation was found, but setup has not been completed.\nYour existing Google sign-in and settings will be preserved.",
-        "Existing installation detected"
-      );
-      const action = await Jt({
-        message: "What would you like to do?",
-        options: [
-          { value: "keep", label: "Keep existing settings and start", hint: "Recommended \u2014 your Google account stays connected" },
-          { value: "setup", label: "Re-run setup wizard", hint: "Configure a new AI provider or change settings" },
-          { value: "fresh", label: "Start fresh (delete all settings)", hint: "Removes all saved accounts and settings" }
-        ]
-      });
-      if (Ct(action)) {
-        Nt("Cancelled.");
-        process.exit(0);
-      }
-      if (action === "fresh") {
-        const confirm = await Rt({ message: "Delete all FlowSpace settings? This cannot be undone." });
-        if (Ct(confirm) || !confirm) {
-          Nt("Cancelled.");
-          process.exit(0);
-        }
-        fs.readdirSync(FLOWSPACE_DIR).forEach((f) => {
-          try {
-            fs.rmSync(path.join(FLOWSPACE_DIR, f), { recursive: true });
-          } catch {
-          }
-        });
-        R2.success("Settings cleared.");
-        config = await runSetupWizard();
-      } else if (action === "setup") {
-        config = await runSetupWizard();
-      } else {
-        config = { version: 1, appVersion: getVersion(), google: { clientSecretPath: "", configured: true }, ai: { configured: false }, port: DEFAULT_PORT };
-        writeConfig(config);
-      }
-    } else {
-      config = await runSetupWizard();
-    }
-  } else if (!config.appVersion || config.appVersion !== getVersion()) {
-    Wt2(`FlowSpace v${getVersion()}`);
-    const action = await Jt({
-      message: "Your settings from the previous version are intact. What would you like to do?",
-      options: [
-        { value: "keep", label: "Keep existing settings and start", hint: "Recommended" },
-        { value: "setup", label: "Re-run setup wizard", hint: "Reconfigure AI provider or other settings" }
-      ]
-    });
-    if (Ct(action)) {
-      Nt("Cancelled.");
-      process.exit(0);
-    }
-    if (action === "setup") {
-      config = await runSetupWizard();
-    } else {
-      config = { ...config, appVersion: getVersion() };
+      config = { version: 1, google: { clientSecretPath: "", configured: true }, ai: { configured: false }, port: DEFAULT_PORT };
       writeConfig(config);
+    } else {
+      config = await runSetupWizard();
     }
   }
   const portFree = await isPortAvailable(port);
   if (!portFree) {
-    if (!process.stdin.isTTY) {
-      let altPort = port + 1;
-      while (altPort < port + 100) {
-        if (await isPortAvailable(altPort)) break;
-        altPort++;
-      }
-      if (altPort >= port + 100) {
-        console.error(`
-  No available port found in range ${port}\u2013${port + 99}.
-`);
-        process.exit(1);
-      }
-      console.log(`  Port ${port} in use, using ${altPort} instead.`);
-      return startServer(altPort);
-    }
     const action = await Jt({
       message: `Port ${port} is already in use.`,
       options: [
@@ -1529,13 +1333,7 @@ async function main() {
     }
     if (action === "kill") {
       try {
-        const pids = execFileSync("lsof", ["-ti", `:${port}`], { stdio: "pipe" }).toString().trim().split("\n").filter(Boolean);
-        for (const pid of pids) {
-          try {
-            process.kill(Number(pid), "SIGKILL");
-          } catch {
-          }
-        }
+        execSync(`lsof -ti :${port} | xargs kill -9`, { stdio: "pipe" });
         R2.success(`Killed process on port ${port}.`);
       } catch {
         R2.error(`Could not kill process on port ${port}.`);
@@ -1569,12 +1367,13 @@ async function runDoctor() {
   checks.push({
     name: "Config",
     ok: config !== null,
-    detail: config ? CONFIG_PATH : "Not found \u2014 run: flowspace setup"
+    detail: config ? CONFIG_PATH : "Not found \u2014 run: npx flowspace setup"
   });
+  const hasSecret = fs.existsSync(CLIENT_SECRET_PATH) && hasValidClientSecret(CLIENT_SECRET_PATH);
   checks.push({
     name: "Google OAuth",
-    ok: true,
-    detail: "Bundled (no setup required)"
+    ok: hasSecret,
+    detail: hasSecret ? "client_secret.json found" : "Missing \u2014 run: npx flowspace setup"
   });
   const gwsCmd = findGwsCommand();
   checks.push({
@@ -1628,7 +1427,7 @@ async function runDoctor() {
   } else {
     const critical = checks.filter((c) => !c.ok && !["AI Provider", `Port ${DEFAULT_PORT}`].includes(c.name));
     if (critical.length > 0) {
-      console.log("  Some checks failed. Run: flowspace setup\n");
+      console.log("  Some checks failed. Run: npx flowspace setup\n");
     } else {
       console.log("  Non-critical issues found. FlowSpace should still work.\n");
     }

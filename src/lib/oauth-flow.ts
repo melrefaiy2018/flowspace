@@ -30,8 +30,13 @@ export async function startOAuthFlow(
       return;
     }
 
-    // The server opens the URL in the system browser via `open` (macOS).
-    // No need for window.open() from the WebView.
+    // In Tauri, the server opens the URL via the OS `open` command.
+    // In a regular browser (Docker / web), we open it ourselves.
+    const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+    if (!isTauri) {
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    }
+
     callbacks.onWaiting?.();
 
     // Poll auth status every 2s for up to 2 minutes

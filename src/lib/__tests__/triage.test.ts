@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { triageEmailsHeuristic } from '../triage';
-import type { GmailMessage } from '../../services/api';
+import { triageEmailsHeuristic, assignBucketsFromEnrichment } from '../triage';
+import type { GmailMessage, GmailThreadSummary } from '../../services/api';
+import type { ThreadEnrichment } from '../../shared/gmail-enrichment-types.js';
 import { createPreferenceExample } from '../importance-feedback';
 
 function makeEmail(overrides: Partial<GmailMessage> = {}): GmailMessage {
@@ -152,5 +153,95 @@ describe('triageEmailsHeuristic', () => {
     expect(result.needs_reply).toHaveLength(1);
     expect(result.needs_reply[0].sender).toContain('bob@example.com');
     expect(result.fyi_only.length + result.can_ignore.length).toBe(1);
+  });
+});
+
+function makeThread(overrides: Partial<GmailThreadSummary> = {}): GmailThreadSummary {
+  return {
+    id: 't1',
+    subject: 'Test',
+    snippet: 'snippet',
+    from: 'alice@test.com',
+    date: '2026-04-11T10:00:00Z',
+    unread: true,
+    messageCount: 1,
+    hasAttachments: false,
+    labelIds: ['INBOX'],
+    ...overrides,
+  };
+}
+
+function makeEnrichment(threadId: string, overrides: Partial<ThreadEnrichment> = {}): ThreadEnrichment {
+  return {
+    threadId,
+    priority: 'high',
+    recommendedAction: 'draft_reply',
+    whyItMatters: 'Test',
+    effortMinutes: '5',
+    bucket: 'needs_reply',
+    ...overrides,
+  };
+}
+
+describe('assignBucketsFromEnrichment', () => {
+  it('high priority + draft_reply -> needs_reply', () => {
+    const threads = [makeThread({ id: 't1' })];
+    const map = new Map([['t1', makeEnrichment('t1', { priority: 'high', recommendedAction: 'draft_reply', bucket: 'needs_reply' })]]);
+    const result = assignBucketsFromEnrichment(threads, map);
+    expect(result.needs_reply).toHaveLength(1);
+    expect(result.needs_reply[0].id).toBe('t1');
+  });
+
+  it('nudge/mark_done -> waiting', () => {
+    const threads = [makeThread({ id: 't1' }), makeThread({ id: 't2' })];
+    const map = new Map([
+      ['t1', makeEnrichment('t1', { recommendedAction: 'nudge', bucket: 'waiting' })],
+      ['t2', makeEnrichment('t2', { recommendedAction: 'mark_done', bucket: 'waiting' })],
+    ]);
+    const result = assignBucketsFromEnrichment(threads, map);
+    expect(result.waiting).toHaveLength(2);
+  });
+
+  it('archive_subscription/unsubscribe -> quick_wins', () => {
+    const threads = [makeThread({ id: 't1' }), makeThread({ id: 't2' })];
+    const map = new Map([
+      ['t1', makeEnrichment('t1', { recommendedAction: 'archive_subscription', bucket: 'quick_wins' })],
+      ['t2', makeEnrichment('t2', { recommendedAction: 'unsubscribe', bucket: 'quick_wins' })],
+    ]);
+    const result = assignBucketsFromEnrichment(threads, map);
+    expect(result.quick_wins).toHaveLength(2);
+  });
+
+  it('priority none (receipts) -> reference_fyi', () => {
+    const threads = [makeThread({ id: 't1' })];
+    const map = new Map([['t1', makeEnrichment('t1', { priority: 'none', bucket: 'reference_fyi' })]]);
+    const result = assignBucketsFromEnrichment(threads, map);
+    expect(result.reference_fyi).toHaveLength(1);
+  });
+
+  it('LLM-assigned quick_wins for a receipt (priority none) → reference_fyi', () => {
+    // Tie-breaker: even if the enrichment object has bucket:quick_wins, priority:none
+    // overrides to reference_fyi (receipts/notifications should never be quick_wins)
+    const threads = [makeThread({ id: 't1' })];
+    const map = new Map([
+      ['t1', makeEnrichment('t1', {
+        priority: 'none',
+        recommendedAction: 'snooze',
+        bucket: 'quick_wins', // LLM mistakenly assigned quick_wins
+      })],
+    ]);
+    const result = assignBucketsFromEnrichment(threads, map);
+    expect(result.reference_fyi).toHaveLength(1);
+    expect(result.quick_wins).toHaveLength(0);
+  });
+
+  it('missing enrichment (failed thread) dropped from buckets', () => {
+    const threads = [makeThread({ id: 't1' }), makeThread({ id: 't2' })];
+    const map = new Map([['t1', makeEnrichment('t1')]]);
+    const result = assignBucketsFromEnrichment(threads, map);
+    expect(result.needs_reply).toHaveLength(1);
+    expect(result.waiting).toHaveLength(0);
+    expect(result.quick_wins).toHaveLength(0);
+    expect(result.reference_fyi).toHaveLength(0);
   });
 });

@@ -9,7 +9,7 @@ import { AGENT_NAME } from '../../lib/branding';
 const sendMessageMock = vi.fn();
 const undoInboxActionFromAuditMock = vi.fn();
 const chatContextState: any = {
-  activeView: 'chat' as const,
+  activeView: 'dashboard' as const,
   messages: [
     {
       id: 'assistant-1',
