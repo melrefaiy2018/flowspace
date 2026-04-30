@@ -16,6 +16,37 @@ An AI assistant with 23 tools that reads, writes, and acts across all your Googl
 
 ---
 
+## App Preview
+
+<p align="center">
+  <img src="docs/assets/readme/dashboard.png" alt="FlowSpace home dashboard with meeting prep and assistant delegation" width="100%" />
+</p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/readme/mail.png" alt="FlowSpace smart mail workspace" />
+    </td>
+    <td width="50%">
+      <img src="docs/assets/readme/tasks.png" alt="FlowSpace task board and task detail view" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Smart mail workspace</strong></td>
+    <td align="center"><strong>Task board</strong></td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/assets/readme/calendar.png" alt="FlowSpace calendar timeline" />
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><strong>Calendar timeline</strong></td>
+  </tr>
+</table>
+
+---
+
 ## What is FlowSpace?
 
 FlowSpace is an open-source personal dashboard for Google Workspace. It surfaces everything that needs your attention — unread emails, upcoming meetings, overdue tasks, flagged items — in a single operational view, and pairs it with an AI chat agent that can actually do things: draft replies, create calendar events, summarize threads, find documents, and more.
@@ -50,23 +81,21 @@ It runs as a **local web app** with zero cloud infrastructure. Your data stays b
 - **A Google account** (personal or Workspace)
 - **An AI API key** — OpenAI, Anthropic, OpenRouter, or a local model (optional for read-only use)
 
-### 1. Clone and install
+### Install
 
 ```bash
-git clone https://github.com/mohamedelrefaiy/flowspace.git
-cd FlowSpace
-make install
+curl -fsSL https://raw.githubusercontent.com/mohamedelrefaiy/flowspace/main/install.sh | bash
 ```
 
-### 2. Start the dev server
+Then run:
 
 ```bash
-make dev
+flowspace
 ```
 
-Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+FlowSpace opens at **[http://localhost:3000](http://localhost:3000)** and walks you through first-time setup.
 
-### 3. Connect Google
+### Connect Google
 
 Click **"Sign in with Google"** in the app. FlowSpace will:
 
@@ -76,7 +105,7 @@ Click **"Sign in with Google"** in the app. FlowSpace will:
 
 No GCP project, no client secrets, no environment variables needed for auth.
 
-### 4. Configure your AI provider
+### Configure your AI provider
 
 Go to **Settings → AI Provider**, choose your provider, and paste your API key. Supported providers:
 
@@ -88,6 +117,15 @@ Go to **Settings → AI Provider**, choose your provider, and paste your API key
 | LM Studio | Local — no key needed |
 
 Settings are saved to `~/.flowspace/.llm-settings.json`. You can change providers at any time.
+
+### Developing from source
+
+```bash
+git clone https://github.com/mohamedelrefaiy/flowspace.git
+cd flowspace
+make install
+make dev
+```
 
 ---
 
