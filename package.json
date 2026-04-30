@@ -1,11 +1,8 @@
 {
   "name": "flowspace",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.2",
   "type": "module",
-  "bin": {
-    "flowspace": "./bin/cli.mjs"
-  },
   "scripts": {
     "tw:build": "tailwindcss -i src/tailwind.input.css -o src/tailwind.generated.css",
     "tw:watch": "tailwindcss -i src/tailwind.input.css -o src/tailwind.generated.css --watch",
