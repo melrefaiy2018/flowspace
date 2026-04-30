@@ -80,7 +80,7 @@ Write operations always show an approval step before anything is sent or saved.
 
 ## Getting Started
 
-> **Limited beta:** Google OAuth is currently in testing mode. To sign in, your Google account must be added as a test user. [Open an issue](https://github.com/mohamedelrefaiy/flowspace/issues) or email to request access.
+> **Early beta:** FlowSpace is actively evolving. Google sign-in works out of the box for all users — no setup required.
 
 ### Prerequisites
 
