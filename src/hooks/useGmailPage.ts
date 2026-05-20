@@ -131,18 +131,20 @@ export function useGmailPage(accountKey?: string): GmailPageState {
             ENRICHMENT_BATCH_SIZE,
             (chunk) => api.getThreadEnrichments(chunk),
             (progress) => {
-              if (cancelled) return;
+              if (cancelled || !progress) return;
+              const batch = Array.isArray(progress.batchEnrichments) ? progress.batchEnrichments : [];
+              const batchFailed = Array.isArray(progress.batchFailed) ? progress.batchFailed : [];
               // Merge this batch's enrichments into the map.
               setEnrichmentMap((prev) => {
                 const next = new Map(prev);
-                for (const e of progress.batchEnrichments) next.set(e.threadId, e);
+                for (const e of batch) next.set(e.threadId, e);
                 return next;
               });
               // Remove processed ids from the queue (both successful and failed).
               setEnrichmentQueue((prev) => {
                 const next = new Set(prev);
-                for (const e of progress.batchEnrichments) next.delete(e.threadId);
-                for (const id of progress.batchFailed) next.delete(id);
+                for (const e of batch) next.delete(e.threadId);
+                for (const id of batchFailed) next.delete(id);
                 return next;
               });
               setEnrichmentProgress({ completed: progress.completed, total: progress.total });

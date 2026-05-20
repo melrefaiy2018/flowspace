@@ -42,7 +42,7 @@ OAUTH_CLIENT_SECRET=$(node -e "const f=require('fs'),p=JSON.parse(f.readFileSync
 # ── Build ────────────────────────────────────────────────────────────
 npm run build
 # Build server with credentials injected (obfuscated in minified binary, no file on disk)
-npx esbuild server.prod.ts \
+npx esbuild server.ts \
   --bundle --platform=node --format=esm \
   --outfile=dist-server/server.mjs \
   --target=node20 \

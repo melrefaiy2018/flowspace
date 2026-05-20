@@ -1,78 +1,103 @@
 /**
- * Codex CLI provider adapter.
+ * Codex CLI provider adapter (ChatGPT Plus / OAuth).
  *
- * Lets users with a ChatGPT Plus/Pro subscription use OpenAI models
- * without an API key. Authentication is handled by the `codex` CLI
- * via browser OAuth (`codex login`).
+ * Uses `codex app-server --listen ws://...` as a subprocess.
+ * Auth is handled by the codex CLI (run `codex login` once).
+ * No API key required — works with any ChatGPT Plus subscription.
  *
- * Architecture:
- *   1. Spawn `codex app-server --listen ws://127.0.0.1:<port>` once per process
- *   2. Open a WebSocket per `complete()` call
- *   3. Send a JSON-RPC 2.0 `chat` request
- *   4. Resolve with a normalized `CompletionResponse`
+ * Protocol:
+ *   1. Spawn `codex app-server --listen ws://127.0.0.1:<port>`
+ *   2. Connect via WebSocket
+ *   3. Send `initialize` RPC
+ *   4. Send `thread/start` → get threadId from result
+ *   5. Send `turn/start` with messages
+ *   6. Collect `item/agentMessage/delta` notifications for streaming text
+ *   7. Resolve on `turn/completed`
  */
 
-import { execFile, spawn } from 'child_process';
-import { promisify } from 'node:util';
+import { execFileSync, spawn } from 'child_process';
 import type {
-  LLMClient,
-  LLMProviderConfig,
   ChatMessage,
   CompletionOptions,
   CompletionResponse,
-  ToolFunctionDef,
+  LLMClient,
+  LLMProviderConfig,
 } from '../llm-types.js';
-
-const execFileAsync = promisify(execFile);
 
 // ── Constants ──────────────────────────────────────────────────────
 
 const CODEX_WS_PORT = 4501;
-const CODEX_WS_URL = `ws://127.0.0.1:${CODEX_WS_PORT}`;
 const SERVER_READY_TIMEOUT_MS = 15_000;
-const DETECT_TIMEOUT_MS = 5_000;
-const COMPLETION_TIMEOUT_MS = 60_000;
+const COMPLETION_TIMEOUT_MS = 120_000;
 
-const CODEX_PATHS = [
-  'codex',
-  '/usr/local/bin/codex',
+// Candidate codex script paths (the .js entrypoint, not the shell wrapper)
+const CODEX_SCRIPT_PATHS = [
+  '/opt/homebrew/lib/node_modules/@openai/codex/bin/codex.js',
+  '/usr/local/lib/node_modules/@openai/codex/bin/codex.js',
+  `${process.env.HOME}/.npm-global/lib/node_modules/@openai/codex/bin/codex.js`,
+  `${process.env.HOME}/.local/lib/node_modules/@openai/codex/bin/codex.js`,
+];
+
+// Candidate codex wrapper paths (shell symlinks — only work if `node` is in PATH)
+const CODEX_WRAPPER_PATHS = [
   '/opt/homebrew/bin/codex',
+  '/usr/local/bin/codex',
   `${process.env.HOME}/.npm-global/bin/codex`,
   `${process.env.HOME}/.local/bin/codex`,
 ];
 
-// ── Detection cache ────────────────────────────────────────────────
+// Extra PATH dirs for Tauri .app bundles (same pattern as claude-code.ts)
+const EXTRA_PATH_DIRS = [
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  `${process.env.HOME}/.npm-global/bin`,
+  `${process.env.HOME}/.local/bin`,
+];
 
-interface DetectResult {
-  available: boolean;
-  path?: string;
+function augmentedEnv(): NodeJS.ProcessEnv {
+  const currentPath = process.env.PATH ?? '';
+  const extra = EXTRA_PATH_DIRS.filter((d) => !currentPath.includes(d)).join(':');
+  return {
+    ...process.env,
+    PATH: extra ? `${extra}:${currentPath}` : currentPath,
+  };
 }
 
-let cachedDetection: DetectResult | null = null;
+/**
+ * Resolve codex as { bin, args } so we can run either:
+ *   - node /path/to/codex.js  (preferred: works even without node in PATH)
+ *   - codex wrapper            (fallback: only works if node is in PATH)
+ *
+ * `process.execPath` is the Node binary that is *already* running the server,
+ * so it is guaranteed to be present inside Tauri .app bundles.
+ */
+function resolveCodexCommand(env: NodeJS.ProcessEnv): { bin: string; leadingArgs: string[] } {
+  const { existsSync } = require('fs') as typeof import('fs');
 
-export function resetCodexDetectionCache(): void {
-  cachedDetection = null;
-}
-
-export async function detectCodexCLI(): Promise<DetectResult> {
-  if (cachedDetection) return cachedDetection;
-
-  for (const candidate of CODEX_PATHS) {
-    try {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), DETECT_TIMEOUT_MS),
-      );
-      await Promise.race([execFileAsync(candidate, ['--version']), timeout]);
-      cachedDetection = { available: true, path: candidate };
-      return cachedDetection;
-    } catch {
-      // try next
+  // Prefer: invoke the .js entrypoint directly via the current Node runtime
+  for (const scriptPath of CODEX_SCRIPT_PATHS) {
+    if (existsSync(scriptPath)) {
+      return { bin: process.execPath, leadingArgs: [scriptPath] };
     }
   }
 
-  cachedDetection = { available: false };
-  return cachedDetection;
+  // Fallback: try shell wrappers (need node in PATH — may work if PATH is augmented)
+  for (const wrapperPath of CODEX_WRAPPER_PATHS) {
+    try {
+      execFileSync(wrapperPath, ['--version'], { stdio: 'ignore', env });
+      return { bin: wrapperPath, leadingArgs: [] };
+    } catch {
+      // not found or node missing — try next
+    }
+  }
+
+  // Last resort: bare 'codex' and let it fail with a clear ENOENT
+  return { bin: 'codex', leadingArgs: [] };
 }
+
+// ── Detection cache ────────────────────────────────────────────────
+
+export function resetCodexDetectionCache(): void {}
 
 // ── Server lifecycle ───────────────────────────────────────────────
 
@@ -89,20 +114,27 @@ export function resetCodexServerCache(): void {
   }
 }
 
-// Register cleanup once at module level — not per call
 process.once('exit', () => resetCodexServerCache());
 
 export function ensureCodexServer(port = CODEX_WS_PORT): Promise<string> {
   if (cachedServerUrl) return Promise.resolve(cachedServerUrl);
-  // Prevent concurrent callers from spawning duplicate processes
   if (pendingServerPromise) return pendingServerPromise;
 
   pendingServerPromise = new Promise<string>((resolve, reject) => {
-    const detection = cachedDetection;
-    const codexBin = detection?.path ?? 'codex';
+    const env = augmentedEnv();
+
+    const codexBin = CODEX_PATHS.find((p) => {
+      try {
+        execFileSync(p, ['--version'], { stdio: 'ignore', env });
+        return true;
+      } catch {
+        return false;
+      }
+    }) ?? 'codex';
 
     const proc = spawn(codexBin, ['app-server', '--listen', `ws://127.0.0.1:${port}`], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env,
     });
 
     cachedServerProcess = proc;
@@ -112,11 +144,14 @@ export function ensureCodexServer(port = CODEX_WS_PORT): Promise<string> {
       reject(new Error(`Codex app-server did not start within ${SERVER_READY_TIMEOUT_MS}ms`));
     }, SERVER_READY_TIMEOUT_MS);
 
-    proc.stdout?.on('data', () => {
+    // Codex can emit startup logs on either stream depending on runtime context.
+    const markReady = () => {
       clearTimeout(timer);
       cachedServerUrl = `ws://127.0.0.1:${port}`;
       resolve(cachedServerUrl);
-    });
+    };
+    proc.stdout?.once('data', markReady);
+    proc.stderr?.once('data', markReady);
 
     proc.on('error', (err) => {
       clearTimeout(timer);
@@ -139,43 +174,39 @@ export function ensureCodexServer(port = CODEX_WS_PORT): Promise<string> {
   return pendingServerPromise;
 }
 
-// ── Message conversion ─────────────────────────────────────────────
+// ── Message serialization ──────────────────────────────────────────
 
-type CodexMessage = Record<string, unknown>;
-
-export function buildCodexMessages(messages: readonly ChatMessage[]): CodexMessage[] {
-  return messages.map((msg) => {
-    if (msg.role === 'tool') {
-      return { role: 'tool', tool_call_id: msg.tool_call_id, content: msg.content };
-    }
-    if (msg.role === 'assistant') {
-      const out: CodexMessage = { role: 'assistant', content: msg.content ?? null };
-      if (msg.tool_calls) out.tool_calls = msg.tool_calls;
-      return out;
-    }
-    return { role: msg.role, content: msg.content };
-  });
+/**
+ * Build the text input for a turn from the last user message.
+ * The Codex app-server manages conversation history via threadId,
+ * so we only send the latest user content.
+ */
+function extractLastUserText(messages: readonly ChatMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === 'user') return m.content;
+  }
+  return '';
 }
 
-// ── Response parsing ───────────────────────────────────────────────
-
-export function parseCodexResponse(raw: unknown): CompletionResponse {
-  const obj = raw as Record<string, any>;
-
-  if (obj.error) {
-    throw new Error(obj.error.message ?? 'Codex error');
+/**
+ * Build a system + conversation context string from all prior messages.
+ * Prepended to the user turn so Codex has full conversation context.
+ */
+function buildContextText(messages: readonly ChatMessage[]): string {
+  const parts: string[] = [];
+  for (const m of messages) {
+    if (m.role === 'system') {
+      parts.push(`[System]\n${m.content}`);
+    } else if (m.role === 'assistant') {
+      parts.push(`[Assistant]\n${m.content ?? ''}`);
+    } else if (m.role === 'user') {
+      parts.push(`[User]\n${m.content}`);
+    } else if (m.role === 'tool') {
+      parts.push(`[Tool result]\n${m.content}`);
+    }
   }
-
-  const choices: CompletionResponse['choices'] = (obj.result?.choices ?? []).map((c: any) => ({
-    message: {
-      role: 'assistant' as const,
-      content: c.message?.content ?? null,
-      ...(c.message?.tool_calls ? { tool_calls: c.message.tool_calls } : {}),
-    },
-    finish_reason: c.finish_reason ?? 'stop',
-  }));
-
-  return { choices };
+  return parts.join('\n\n');
 }
 
 // ── LLMClient implementation ───────────────────────────────────────
@@ -185,36 +216,28 @@ let rpcIdCounter = 0;
 export function createCodexClient(config: LLMProviderConfig): LLMClient {
   return {
     provider: 'codex',
-    model: config.model || 'o4-mini',
+    model: config.model || 'gpt-5.5',
 
     async complete(
       messages: readonly ChatMessage[],
       options: CompletionOptions = {},
     ): Promise<CompletionResponse> {
-      const { signal, tools } = options;
+      const { signal } = options;
 
-      if (signal?.aborted) {
-        throw new Error('Request aborted');
-      }
+      if (signal?.aborted) throw new Error('Request aborted');
 
       const wsUrl = await ensureCodexServer();
-      const id = String(++rpcIdCounter);
 
-      const request = {
-        jsonrpc: '2.0',
-        id,
-        method: 'chat',
-        params: {
-          model: config.model || 'o4-mini',
-          messages: buildCodexMessages(messages),
-          ...(tools && tools.length > 0 ? { tools } : {}),
-        },
-      };
-
-      return new Promise((resolve, reject) => {
+      return new Promise<CompletionResponse>((resolve, reject) => {
         const WS = (globalThis as any).WebSocket as typeof WebSocket;
         const ws = new WS(wsUrl) as any;
         let settled = false;
+        let accumulatedText = '';
+        let threadId: string | null = null;
+
+        const initId = String(++rpcIdCounter);
+        const threadStartId = String(++rpcIdCounter);
+        const turnStartId = String(++rpcIdCounter);
 
         const cleanup = () => {
           settled = true;
@@ -222,7 +245,6 @@ export function createCodexClient(config: LLMProviderConfig): LLMClient {
           try { ws.close(); } catch { /* ignore */ }
         };
 
-        // Timeout guard — reject if Codex never responds
         const timeoutTimer = setTimeout(() => {
           if (!settled) {
             cleanup();
@@ -235,47 +257,121 @@ export function createCodexClient(config: LLMProviderConfig): LLMClient {
           cleanup();
           reject(new Error('Request aborted'));
         };
+        if (signal) signal.addEventListener('abort', onAbort, { once: true });
 
-        if (signal) {
-          signal.addEventListener('abort', onAbort, { once: true });
-        }
+        const on = (event: string, handler: (...args: any[]) => void) => {
+          if (ws.addEventListener) ws.addEventListener(event, handler);
+          else ws.on(event, handler);
+        };
 
-        ws.addEventListener
-          ? ws.addEventListener('open', onOpen)
-          : ws.on('open', onOpen);
-        ws.addEventListener
-          ? ws.addEventListener('message', onMessage)
-          : ws.on('message', onMessage);
-        ws.addEventListener
-          ? ws.addEventListener('error', onError)
-          : ws.on('error', onError);
+        on('open', () => {
+          ws.send(JSON.stringify({
+            jsonrpc: '2.0',
+            id: initId,
+            method: 'initialize',
+            params: { clientInfo: { name: 'flowspace', version: '1.0' }, capabilities: null },
+          }));
+        });
 
-        function onOpen() {
-          ws.send(JSON.stringify(request));
-        }
-
-        function onMessage(event: any) {
+        on('message', (event: any) => {
           try {
             const text = typeof event === 'string' ? event
               : event?.data ? event.data
-              : event;
-            const parsed = JSON.parse(text);
-            if (parsed.id !== id) return; // not our message
-            signal?.removeEventListener('abort', onAbort);
-            cleanup();
-            resolve(parseCodexResponse(parsed));
+              : String(event);
+            const msg = JSON.parse(text);
+
+            // RPC response to initialize → start thread
+            if (msg.id === initId && msg.result !== undefined) {
+              ws.send(JSON.stringify({
+                jsonrpc: '2.0',
+                id: threadStartId,
+                method: 'thread/start',
+                params: {
+                  ephemeral: true,
+                  ...(config.model ? { model: config.model } : {}),
+                },
+              }));
+              return;
+            }
+
+            // RPC response to thread/start → extract threadId, start turn
+            if (msg.id === threadStartId) {
+              if (msg.error) {
+                signal?.removeEventListener('abort', onAbort);
+                cleanup();
+                reject(new Error(msg.error.message ?? 'thread/start failed'));
+                return;
+              }
+              threadId = msg.result?.thread?.id ?? null;
+              if (!threadId) {
+                signal?.removeEventListener('abort', onAbort);
+                cleanup();
+                reject(new Error('Codex: no threadId in thread/start response'));
+                return;
+              }
+
+              // Build full context as a single user turn
+              const contextText = buildContextText(messages);
+              ws.send(JSON.stringify({
+                jsonrpc: '2.0',
+                id: turnStartId,
+                method: 'turn/start',
+                params: {
+                  threadId,
+                  input: [{ type: 'text', text: contextText, text_elements: [] }],
+                },
+              }));
+              return;
+            }
+
+            // RPC error on turn/start
+            if (msg.id === turnStartId && msg.error) {
+              signal?.removeEventListener('abort', onAbort);
+              cleanup();
+              reject(new Error(msg.error.message ?? 'turn/start failed'));
+              return;
+            }
+
+            // Notification: streaming text delta
+            if (msg.method === 'item/agentMessage/delta') {
+              accumulatedText += msg.params?.delta ?? '';
+              return;
+            }
+
+            // Notification: turn completed → resolve
+            if (msg.method === 'turn/completed') {
+              signal?.removeEventListener('abort', onAbort);
+              cleanup();
+              resolve({
+                choices: [{
+                  message: {
+                    role: 'assistant',
+                    content: accumulatedText.trim() || null,
+                  },
+                  finish_reason: 'stop',
+                }],
+              });
+              return;
+            }
+
+            // Notification: error
+            if (msg.method === 'error') {
+              signal?.removeEventListener('abort', onAbort);
+              cleanup();
+              reject(new Error(msg.params?.message ?? 'Codex error'));
+            }
           } catch (err) {
             signal?.removeEventListener('abort', onAbort);
             cleanup();
             reject(err);
           }
-        }
+        });
 
-        function onError(err: any) {
+        on('error', (err: any) => {
           signal?.removeEventListener('abort', onAbort);
           cleanup();
-          reject(err instanceof Error ? err : new Error(String(err.message ?? err)));
-        }
+          reject(err instanceof Error ? err : new Error(String(err?.message ?? err)));
+        });
       });
     },
   };
@@ -288,7 +384,11 @@ export async function testCodexConnection(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const client = createCodexClient(config);
-    await client.complete([{ role: 'user', content: 'Say "ok".' }]);
+    const response = await client.complete([{ role: 'user', content: 'Say "ok".' }]);
+    const content = response.choices[0]?.message?.content;
+    if (content === null || content === undefined) {
+      return { success: false, error: 'No response from Codex' };
+    }
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message ?? 'Connection failed' };

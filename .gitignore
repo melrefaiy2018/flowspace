@@ -118,3 +118,6 @@ llm-kb
 releases/
 .obsidian/
 staged-drafts.json
+.agents
+.impeccable
+.qwen

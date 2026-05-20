@@ -45,7 +45,7 @@ export default function ProviderDiagnostics({ providerId, activeProvider, savedC
 
       {/* Human-readable status line */}
       <div className={`mb-3 flex items-start gap-1.5 rounded-[10px] px-2.5 py-2 text-[11px] font-medium ${
-        ok === true ? 'bg-green-500/10 text-green-300'
+        ok === true ? 'border border-[var(--green-border)] bg-[var(--green-dim)] text-[var(--green)]'
         : ok === false ? 'bg-red-500/10 text-red-300'
         : 'bg-[var(--surface)] text-[var(--text-faint)]'
       }`}>

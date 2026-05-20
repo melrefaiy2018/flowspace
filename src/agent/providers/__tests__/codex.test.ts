@@ -1,31 +1,28 @@
 /**
- * Tests for the Codex CLI provider adapter.
+ * Tests for the Codex CLI provider adapter (OAuth / app-server protocol).
  *
- * Covers: CLI detection, message conversion, response parsing,
- * server lifecycle, and the full LLMClient integration — with
- * mocked child_process and globalThis.WebSocket.
+ * Mocks child_process.spawn and globalThis.WebSocket to test the
+ * initialize → thread/start → turn/start → turn/completed flow.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import type { ChatMessage, ToolFunctionDef } from '../../llm-types';
+import type { ChatMessage } from '../../llm-types';
 
-// ── Mock child_process before importing module ──────────────────────
+// ── Mock child_process ─────────────────────────────────────────────
 
-const mockExecFile = vi.fn();
 const mockSpawn = vi.fn();
+const mockExecFileSync = vi.fn();
 
 vi.mock('child_process', () => ({
-  execFile: (...args: unknown[]) => mockExecFile(...args),
   spawn: (...args: unknown[]) => mockSpawn(...args),
+  execFileSync: (...args: unknown[]) => mockExecFileSync(...args),
 }));
 
-// ── MockWebSocket ───────────────────────────────────────────────────
+// ── MockWebSocket ──────────────────────────────────────────────────
 
 class MockWebSocket extends EventEmitter {
   static OPEN = 1;
-  static CONNECTING = 0;
-  static CLOSED = 3;
   readyState = MockWebSocket.OPEN;
   send = vi.fn();
   close = vi.fn();
@@ -39,27 +36,50 @@ class MockWebSocket extends EventEmitter {
 
 const mockWsInstances: MockWebSocket[] = [];
 
-// ── Dynamic import after mocks ────────────────────────────────────
+// ── Dynamic import after mocks ─────────────────────────────────────
 
 const {
-  detectCodexCLI,
-  resetCodexDetectionCache,
-  buildCodexMessages,
-  parseCodexResponse,
   ensureCodexServer,
   resetCodexServerCache,
+  resetCodexDetectionCache,
   createCodexClient,
   testCodexConnection,
 } = await import('../codex.js');
 
-// ── Setup / teardown ─────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────
+
+function createMockServerProcess() {
+  const proc = new EventEmitter() as any;
+  proc.stdout = new EventEmitter();
+  proc.stderr = new EventEmitter();
+  proc.kill = vi.fn();
+  proc.pid = 12345;
+  return proc;
+}
+
+function setupServerMock() {
+  const proc = createMockServerProcess();
+  mockSpawn.mockImplementation(() => {
+    process.nextTick(() => proc.stdout.emit('data', Buffer.from('listening on:')));
+    return proc;
+  });
+  return proc;
+}
+
+function getLastWs(): MockWebSocket {
+  return mockWsInstances[mockWsInstances.length - 1];
+}
+
+// ── Setup / teardown ───────────────────────────────────────────────
 
 beforeEach(() => {
-  mockExecFile.mockReset();
   mockSpawn.mockReset();
+  mockExecFileSync.mockReset();
+  // Make execFileSync succeed so codex bin detection works
+  mockExecFileSync.mockReturnValue(Buffer.from('codex-cli 0.132.0'));
   mockWsInstances.length = 0;
-  resetCodexDetectionCache();
   resetCodexServerCache();
+  resetCodexDetectionCache();
   (globalThis as any).WebSocket = MockWebSocket;
 });
 
@@ -67,326 +87,117 @@ afterEach(() => {
   delete (globalThis as any).WebSocket;
 });
 
-// ── detectCodexCLI ───────────────────────────────────────────────
-
-describe('detectCodexCLI', () => {
-  it('returns available: true when codex --version succeeds', async () => {
-    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: Function) => {
-      cb(null, '1.0.0', '');
-    });
-
-    const result = await detectCodexCLI();
-
-    expect(result.available).toBe(true);
-    expect(result.path).toBeTruthy();
-  });
-
-  it('returns available: false when codex is not found', async () => {
-    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: Function) => {
-      const err = Object.assign(new Error('not found'), { code: 'ENOENT' });
-      cb(err, '', '');
-    });
-
-    const result = await detectCodexCLI();
-
-    expect(result.available).toBe(false);
-  });
-
-  it('caches the result — execFile called only once on repeated calls', async () => {
-    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: Function) => {
-      cb(null, '1.0.0', '');
-    });
-
-    await detectCodexCLI();
-    await detectCodexCLI();
-    await detectCodexCLI();
-
-    expect(mockExecFile).toHaveBeenCalledTimes(1);
-  });
-
-  it('resetCodexDetectionCache clears the cache', async () => {
-    mockExecFile.mockImplementation((_cmd: string, _args: string[], cb: Function) => {
-      cb(null, '1.0.0', '');
-    });
-
-    await detectCodexCLI();
-    resetCodexDetectionCache();
-    await detectCodexCLI();
-
-    expect(mockExecFile).toHaveBeenCalledTimes(2);
-  });
-});
-
-// ── buildCodexMessages ──────────────────────────────────────────
-
-describe('buildCodexMessages', () => {
-  it('passes through system messages', () => {
-    const messages: ChatMessage[] = [{ role: 'system', content: 'You are helpful.' }];
-    const result = buildCodexMessages(messages);
-    expect(result).toEqual([{ role: 'system', content: 'You are helpful.' }]);
-  });
-
-  it('passes through user messages', () => {
-    const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
-    const result = buildCodexMessages(messages);
-    expect(result).toEqual([{ role: 'user', content: 'Hello' }]);
-  });
-
-  it('passes through assistant messages with tool_calls', () => {
-    const toolCall = { id: 'tc1', type: 'function' as const, function: { name: 'search', arguments: '{}' } };
-    const messages: ChatMessage[] = [{ role: 'assistant', content: null, tool_calls: [toolCall] }];
-    const result = buildCodexMessages(messages);
-    expect(result[0].role).toBe('assistant');
-    expect((result[0] as any).tool_calls).toEqual([toolCall]);
-  });
-
-  it('converts tool role messages', () => {
-    const messages: ChatMessage[] = [{ role: 'tool', tool_call_id: 'tc1', content: 'result' }];
-    const result = buildCodexMessages(messages);
-    expect(result[0].role).toBe('tool');
-    expect((result[0] as any).tool_call_id).toBe('tc1');
-    expect((result[0] as any).content).toBe('result');
-  });
-
-  it('returns empty array for empty input', () => {
-    expect(buildCodexMessages([])).toEqual([]);
-  });
-});
-
-// ── parseCodexResponse ──────────────────────────────────────────
-
-describe('parseCodexResponse', () => {
-  it('parses a valid result with text content', () => {
-    const raw = {
-      jsonrpc: '2.0',
-      id: '1',
-      result: {
-        choices: [{
-          message: { role: 'assistant', content: 'Hello!' },
-          finish_reason: 'stop',
-        }],
-      },
-    };
-
-    const result = parseCodexResponse(raw);
-
-    expect(result.choices).toHaveLength(1);
-    expect(result.choices[0].message.content).toBe('Hello!');
-    expect(result.choices[0].finish_reason).toBe('stop');
-  });
-
-  it('parses tool_calls in the response', () => {
-    const toolCall = { id: 'tc1', type: 'function', function: { name: 'search_drive', arguments: '{"q":"test"}' } };
-    const raw = {
-      jsonrpc: '2.0',
-      id: '1',
-      result: {
-        choices: [{
-          message: { role: 'assistant', content: null, tool_calls: [toolCall] },
-          finish_reason: 'tool_calls',
-        }],
-      },
-    };
-
-    const result = parseCodexResponse(raw);
-
-    expect(result.choices[0].finish_reason).toBe('tool_calls');
-    expect(result.choices[0].message.tool_calls).toHaveLength(1);
-    expect(result.choices[0].message.tool_calls![0].function.name).toBe('search_drive');
-  });
-
-  it('throws on JSON-RPC error response', () => {
-    const raw = {
-      jsonrpc: '2.0',
-      id: '1',
-      error: { code: -32600, message: 'Not authenticated' },
-    };
-
-    expect(() => parseCodexResponse(raw)).toThrow('Not authenticated');
-  });
-
-  it('handles null content gracefully', () => {
-    const raw = {
-      jsonrpc: '2.0',
-      id: '1',
-      result: {
-        choices: [{ message: { role: 'assistant', content: null }, finish_reason: 'stop' }],
-      },
-    };
-
-    const result = parseCodexResponse(raw);
-    expect(result.choices[0].message.content).toBeNull();
-  });
-
-  it('returns empty choices when result.choices is missing', () => {
-    const raw = { jsonrpc: '2.0', id: '1', result: {} };
-    const result = parseCodexResponse(raw);
-    expect(result.choices).toEqual([]);
-  });
-});
-
-// ── ensureCodexServer ─────────────────────────────────────────────
+// ── ensureCodexServer ──────────────────────────────────────────────
 
 describe('ensureCodexServer', () => {
-  function createMockServerProcess() {
-    const proc = new EventEmitter() as any;
-    proc.stdout = new EventEmitter();
-    proc.stderr = new EventEmitter();
-    proc.kill = vi.fn();
-    proc.pid = 12345;
-    return proc;
-  }
-
-  it('spawns codex app-server on first call', async () => {
-    const proc = createMockServerProcess();
-    mockSpawn.mockReturnValue(proc);
-
-    const serverPromise = ensureCodexServer(4501);
-    // Simulate server ready signal
-    process.nextTick(() => proc.stdout.emit('data', Buffer.from('Listening')));
-
-    const url = await serverPromise;
-
+  it('spawns codex app-server and resolves with ws URL', async () => {
+    setupServerMock();
+    const url = await ensureCodexServer(4501);
     expect(mockSpawn).toHaveBeenCalledOnce();
-    expect(mockSpawn.mock.calls[0][0]).toMatch(/codex/);
+    expect(mockSpawn.mock.calls[0][1]).toContain('app-server');
     expect(url).toBe('ws://127.0.0.1:4501');
   });
 
-  it('returns cached URL on second call without re-spawning', async () => {
-    const proc = createMockServerProcess();
-    mockSpawn.mockReturnValue(proc);
-
-    const p1 = ensureCodexServer(4501);
-    process.nextTick(() => proc.stdout.emit('data', Buffer.from('Listening')));
-    await p1;
-
-    const p2 = ensureCodexServer(4501);
-    await p2;
-
+  it('returns cached URL on second call', async () => {
+    setupServerMock();
+    await ensureCodexServer(4501);
+    await ensureCodexServer(4501);
     expect(mockSpawn).toHaveBeenCalledTimes(1);
   });
 
   it('rejects when spawn emits error', async () => {
     const proc = createMockServerProcess();
     mockSpawn.mockReturnValue(proc);
-
-    const serverPromise = ensureCodexServer(4501);
+    const p = ensureCodexServer(4501);
     process.nextTick(() => proc.emit('error', new Error('codex not found')));
-
-    await expect(serverPromise).rejects.toThrow('codex not found');
+    await expect(p).rejects.toThrow('codex not found');
   });
 });
 
-// ── createCodexClient ─────────────────────────────────────────────
+// ── createCodexClient ──────────────────────────────────────────────
 
 describe('createCodexClient', () => {
-  const config = { provider: 'codex' as const, apiKey: '', model: 'o4-mini' };
+  const config = { provider: 'codex' as const, apiKey: '', model: 'gpt-5.5' };
 
-  /** Wait enough microtask ticks for the server promise + .finally() to settle */
-  const waitForServer = () => new Promise(r => setTimeout(r, 10));
-
-  function setupServerMock() {
-    const proc = new EventEmitter() as any;
-    proc.stdout = new EventEmitter();
-    proc.stderr = new EventEmitter();
-    proc.kill = vi.fn();
-    proc.pid = 1;
-    mockSpawn.mockReturnValue(proc);
-    // Auto-emit ready signal
-    const origSpawn = mockSpawn.getMockImplementation();
-    mockSpawn.mockImplementation((...args: any[]) => {
-      const p = origSpawn!(...args);
-      process.nextTick(() => p.stdout.emit('data', Buffer.from('Listening')));
-      return p;
-    });
-    return proc;
-  }
-
-  function getLastWs(): MockWebSocket {
-    return mockWsInstances[mockWsInstances.length - 1];
-  }
-
-  function replyWithSuccess(ws: MockWebSocket, content: string, id?: string) {
-    process.nextTick(() => {
+  /** Drive the full initialize → thread/start → turn/start → turn/completed flow */
+  function driveFlow(ws: MockWebSocket, responseText: string) {
+    process.nextTick(async () => {
       ws.emit('open');
-      process.nextTick(() => {
-        const sentMsg = JSON.parse(ws.send.mock.calls[0][0]);
-        ws.emit('message', JSON.stringify({
-          jsonrpc: '2.0',
-          id: sentMsg.id,
-          result: {
-            choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }],
-          },
-        }));
-      });
+      // Small delay so send() gets called before we check it
+      await new Promise(r => setTimeout(r, 5));
+
+      // Respond to initialize
+      const calls = ws.send.mock.calls;
+      const initMsg = JSON.parse(calls[0][0]);
+      ws.emit('message', JSON.stringify({ jsonrpc: '2.0', id: initMsg.id, result: { userAgent: 'test' } }));
+
+      await new Promise(r => setTimeout(r, 5));
+
+      // Respond to thread/start
+      const threadStartMsg = JSON.parse(ws.send.mock.calls[1][0]);
+      ws.emit('message', JSON.stringify({
+        jsonrpc: '2.0',
+        id: threadStartMsg.id,
+        result: { thread: { id: 'thread-123' } },
+      }));
+
+      await new Promise(r => setTimeout(r, 5));
+
+      // Respond to turn/start (ACK) + streaming + completed
+      ws.emit('message', JSON.stringify({
+        method: 'item/agentMessage/delta',
+        params: { threadId: 'thread-123', turnId: 'turn-1', itemId: 'item-1', delta: responseText },
+      }));
+      ws.emit('message', JSON.stringify({
+        method: 'turn/completed',
+        params: { threadId: 'thread-123', turn: { id: 'turn-1' } },
+      }));
     });
   }
 
   it('has correct provider and model', () => {
     const client = createCodexClient(config);
     expect(client.provider).toBe('codex');
-    expect(client.model).toBe('o4-mini');
+    expect(client.model).toBe('gpt-5.5');
   });
 
-  it('sends a well-formed JSON-RPC chat request', async () => {
+  it('sends initialize then thread/start then turn/start in order', async () => {
     setupServerMock();
     const client = createCodexClient(config);
     const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
 
     const completePromise = client.complete(messages);
-    await waitForServer();
+    await new Promise(r => setTimeout(r, 10));
     const ws = getLastWs();
-    replyWithSuccess(ws, 'Hi there!');
+    driveFlow(ws, 'Hi!');
 
     await completePromise;
 
-    const sent = JSON.parse(ws.send.mock.calls[0][0]);
-    expect(sent.jsonrpc).toBe('2.0');
-    expect(sent.method).toBe('chat');
-    expect(sent.params.model).toBe('o4-mini');
-    expect(sent.params.messages).toEqual([{ role: 'user', content: 'Hello' }]);
+    const sent = ws.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+    expect(sent[0].method).toBe('initialize');
+    expect(sent[1].method).toBe('thread/start');
+    expect(sent[2].method).toBe('turn/start');
+    expect(sent[2].params.threadId).toBe('thread-123');
   });
 
-  it('returns CompletionResponse with text content', async () => {
+  it('returns accumulated text from agentMessage/delta', async () => {
     setupServerMock();
     const client = createCodexClient(config);
 
     const completePromise = client.complete([{ role: 'user', content: 'Hi' }]);
-    await waitForServer();
+    await new Promise(r => setTimeout(r, 10));
     const ws = getLastWs();
-    replyWithSuccess(ws, 'Hello!');
+    driveFlow(ws, 'Hello there!');
 
-    const response = await completePromise;
-
-    expect(response.choices[0].message.content).toBe('Hello!');
-    expect(response.choices[0].finish_reason).toBe('stop');
-  });
-
-  it('includes tools in the request when provided', async () => {
-    setupServerMock();
-    const client = createCodexClient(config);
-    const tools: ToolFunctionDef[] = [{
-      type: 'function',
-      function: { name: 'search', description: 'Search', parameters: {} },
-    }];
-
-    const completePromise = client.complete([{ role: 'user', content: 'Search' }], { tools });
-    await waitForServer();
-    const ws = getLastWs();
-    replyWithSuccess(ws, 'Done');
-
-    await completePromise;
-
-    const sent = JSON.parse(ws.send.mock.calls[0][0]);
-    expect(sent.params.tools).toHaveLength(1);
-    expect(sent.params.tools[0].function.name).toBe('search');
+    const result = await completePromise;
+    expect(result.choices[0].message.content).toBe('Hello there!');
+    expect(result.choices[0].finish_reason).toBe('stop');
   });
 
   it('rejects immediately when signal is already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
     const client = createCodexClient(config);
-
     await expect(
       client.complete([{ role: 'user', content: 'Hi' }], { signal: controller.signal })
     ).rejects.toThrow(/abort/i);
@@ -395,100 +206,69 @@ describe('createCodexClient', () => {
   it('rejects when WebSocket emits error', async () => {
     setupServerMock();
     const client = createCodexClient(config);
-
     const completePromise = client.complete([{ role: 'user', content: 'Hi' }]);
-    await waitForServer();
+    await new Promise(r => setTimeout(r, 10));
     const ws = getLastWs();
-    process.nextTick(() => {
-      ws.emit('open');
-      process.nextTick(() => ws.emit('error', new Error('WS connection failed')));
-    });
-
+    process.nextTick(() => ws.emit('error', new Error('WS connection failed')));
     await expect(completePromise).rejects.toThrow('WS connection failed');
   });
 
-  it('closes WebSocket when abort fires mid-flight', async () => {
+  it('rejects with error when thread/start fails', async () => {
     setupServerMock();
-    const controller = new AbortController();
     const client = createCodexClient(config);
-
-    const completePromise = client.complete(
-      [{ role: 'user', content: 'Hi' }],
-      { signal: controller.signal }
-    );
-    await waitForServer();
+    const completePromise = client.complete([{ role: 'user', content: 'Hi' }]);
+    await new Promise(r => setTimeout(r, 10));
     const ws = getLastWs();
-    process.nextTick(() => {
+
+    process.nextTick(async () => {
       ws.emit('open');
-      process.nextTick(() => controller.abort());
+      await new Promise(r => setTimeout(r, 5));
+      const initMsg = JSON.parse(ws.send.mock.calls[0][0]);
+      ws.emit('message', JSON.stringify({ jsonrpc: '2.0', id: initMsg.id, result: {} }));
+      await new Promise(r => setTimeout(r, 5));
+      const threadStartMsg = JSON.parse(ws.send.mock.calls[1][0]);
+      ws.emit('message', JSON.stringify({
+        jsonrpc: '2.0', id: threadStartMsg.id,
+        error: { code: -32600, message: 'Not authenticated' },
+      }));
     });
 
-    await expect(completePromise).rejects.toThrow(/abort/i);
-    expect(ws.close).toHaveBeenCalled();
+    await expect(completePromise).rejects.toThrow('Not authenticated');
   });
 });
 
-// ── testCodexConnection ───────────────────────────────────────────
+// ── testCodexConnection ────────────────────────────────────────────
 
 describe('testCodexConnection', () => {
-  const config = { provider: 'codex' as const, apiKey: '', model: 'o4-mini' };
+  const config = { provider: 'codex' as const, apiKey: '', model: 'gpt-5.5' };
 
-  it('returns success: true when complete resolves', async () => {
-    // Pre-seed the server cache so ensureCodexServer doesn't spawn
-    const proc = new EventEmitter() as any;
-    proc.stdout = new EventEmitter();
-    proc.stderr = new EventEmitter();
-    proc.kill = vi.fn();
-    mockSpawn.mockImplementation(() => {
-      process.nextTick(() => proc.stdout.emit('data', Buffer.from('Listening')));
-      return proc;
-    });
-
-    const testPromise = testCodexConnection(config);
-    // Let the server spawn and WS connect
-    await new Promise(r => setTimeout(r, 50));
-    const ws = mockWsInstances[mockWsInstances.length - 1];
-    if (ws) {
-      ws.emit('open');
-      await new Promise(r => setTimeout(r, 10)); // let send() fire
-      const sent = JSON.parse(ws.send.mock.calls[0]?.[0] ?? '{}');
-      ws.emit('message', JSON.stringify({
-        jsonrpc: '2.0', id: sent.id,
-        result: { choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] },
-      }));
-    }
-
-    const result = await testPromise;
-    expect(result.success).toBe(true);
-  });
-
-  it('returns success: false with error message when complete rejects', async () => {
-    // Make WebSocket error immediately
-    const OrigWs = (globalThis as any).WebSocket;
-    (globalThis as any).WebSocket = class extends EventEmitter {
-      static OPEN = 1;
-      readyState = 0;
-      send = vi.fn();
-      close = vi.fn();
-      constructor() {
-        super();
-        process.nextTick(() => this.emit('error', new Error('Not authenticated')));
-      }
-    };
-
-    const proc = new EventEmitter() as any;
-    proc.stdout = new EventEmitter();
-    proc.stderr = new EventEmitter();
-    proc.kill = vi.fn();
-    mockSpawn.mockImplementation(() => {
-      process.nextTick(() => proc.stdout.emit('data', Buffer.from('Listening')));
-      return proc;
-    });
+  it('returns success: false with error when server spawn fails', async () => {
+    const proc = createMockServerProcess();
+    mockSpawn.mockReturnValue(proc);
+    // Emit error immediately so ensureCodexServer rejects
+    process.nextTick(() => proc.emit('error', new Error('spawn ENOENT')));
 
     const result = await testCodexConnection(config);
     expect(result.success).toBe(false);
-    expect(result.error).toBeTruthy();
+    expect(result.error).toMatch(/spawn ENOENT/i);
+  }, 10_000);
+});
 
-    (globalThis as any).WebSocket = OrigWs;
+// ── reset helpers ──────────────────────────────────────────────────
+
+describe('reset helpers', () => {
+  it('resetCodexDetectionCache does not throw', () => {
+    expect(() => resetCodexDetectionCache()).not.toThrow();
+  });
+
+  it('resetCodexServerCache kills server process and clears cache', async () => {
+    const proc = setupServerMock();
+    await ensureCodexServer(4501);
+    resetCodexServerCache();
+    expect(proc.kill).toHaveBeenCalled();
+    // After reset, next call should spawn again
+    setupServerMock();
+    await ensureCodexServer(4501);
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
   });
 });

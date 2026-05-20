@@ -16,7 +16,6 @@ import {
   KeyRound,
   Plus,
   Trash2,
-  Copy,
   RadioTower,
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -43,7 +42,7 @@ function panelClassName(extra?: string) {
 }
 
 function statusPillClassName(tone: 'active' | 'configured' | 'idle') {
-  if (tone === 'active') return 'border-[var(--accent)]/20 bg-[var(--accent)]/10 text-[var(--accent)]';
+  if (tone === 'active') return 'border-[var(--green-border)] bg-[var(--green-dim)] text-[var(--green)]';
   if (tone === 'configured') return 'border-[var(--blue)]/18 bg-[var(--blue)]/10 text-[var(--blue)]';
   return 'border-[var(--border)] bg-[var(--surface2)] text-[var(--text-dim)]';
 }
@@ -101,18 +100,34 @@ export default function LLMProviderSettings({
 
   // Codex login flow state
   const [codexStatus, setCodexStatus] = useState<{ installed: boolean; authenticated: boolean } | null>(null);
-  const [codexLoginState, setCodexLoginState] = useState<'idle' | 'starting' | 'success' | 'error'>('idle');
+  const [codexLoginState, setCodexLoginState] = useState<'idle' | 'opening' | 'waiting' | 'checking' | 'success' | 'error'>('idle');
   const [codexLoginError, setCodexLoginError] = useState<string | null>(null);
+  const [codexAuthUrl, setCodexAuthUrl] = useState<string | null>(null);
 
-  // Check codex status when codex panel is selected
   useEffect(() => {
     if (selectedId !== 'codex') return;
     api.getCodexStatus().then(setCodexStatus).catch(() => setCodexStatus({ installed: false, authenticated: false }));
   }, [selectedId]);
 
-  // "I've signed in" button — just re-checks codex login status
-  const startCodexLogin = useCallback(async () => {
-    setCodexLoginState('starting');
+  // Step 1: get the OAuth URL from the server and open it in a new tab
+  const openCodexLogin = useCallback(async () => {
+    setCodexLoginState('opening');
+    setCodexLoginError(null);
+    setCodexAuthUrl(null);
+    try {
+      const { authUrl } = await api.startCodexLogin();
+      setCodexAuthUrl(authUrl);
+      window.open(authUrl, '_blank', 'noopener,noreferrer');
+      setCodexLoginState('waiting');
+    } catch (err: any) {
+      setCodexLoginState('error');
+      setCodexLoginError(err.message ?? 'Failed to start login');
+    }
+  }, []);
+
+  // Step 2: user has completed OAuth in browser — poll auth.json to confirm
+  const confirmCodexLogin = useCallback(async () => {
+    setCodexLoginState('checking');
     setCodexLoginError(null);
     try {
       const { authenticated, reason } = await api.pollCodexLogin();
@@ -120,11 +135,11 @@ export default function LLMProviderSettings({
         setCodexLoginState('success');
         setCodexStatus({ installed: true, authenticated: true });
       } else {
-        setCodexLoginState('error');
-        setCodexLoginError(`Not signed in yet — run "codex login" in your terminal first. (${reason ?? 'unknown'})`);
+        setCodexLoginState('waiting');
+        setCodexLoginError(`Not signed in yet — complete the browser sign-in first. (${reason ?? 'unknown'})`);
       }
     } catch (err: any) {
-      setCodexLoginState('error');
+      setCodexLoginState('waiting');
       setCodexLoginError(err.message ?? 'Failed to check login status');
     }
   }, []);
@@ -356,7 +371,7 @@ export default function LLMProviderSettings({
                 <div className="flex items-center gap-2">
                   <span className="truncate text-[13px] font-medium text-[var(--text)]">{meta.name}</span>
                   {isActive && (
-                    <span className="shrink-0 rounded-full border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
+                    <span className="shrink-0 rounded-full border border-[var(--green-border)] bg-[var(--green-dim)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--green)]">
                       Active
                     </span>
                   )}
@@ -590,54 +605,95 @@ export default function LLMProviderSettings({
                   )}
                 </div>
 
-                {/* Codex login flow */}
+                {/* Codex OAuth login flow */}
                 {selectedProvider.id === 'codex' && (
                   <div className="rounded-[14px] border border-[var(--blue)]/20 bg-[var(--blue)]/5 p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--blue)]">ChatGPT Plus connection</span>
-                      {codexStatus?.authenticated && (
-                        <span className="flex items-center gap-1.5 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
+                      {(codexLoginState === 'success' || codexStatus?.authenticated) && (
+                        <span className="flex items-center gap-1.5 rounded-full border border-[var(--green-border)] bg-[var(--green-dim)] px-2 py-0.5 text-[10px] font-semibold text-[var(--green)]">
                           <Check className="h-2.5 w-2.5" /> Connected
                         </span>
                       )}
                     </div>
-                    {!codexStatus?.installed && (
+
+                    {/* Not yet installed */}
+                    {codexStatus !== null && !codexStatus.installed && (
                       <p className="text-[12px] leading-5 text-[var(--text-dim)]">
                         Install the Codex CLI first:{' '}
                         <code className="rounded bg-[var(--surface3)] px-1.5 py-0.5 text-[11px] text-[var(--accent)]">npm install -g @openai/codex</code>
                       </p>
                     )}
-                    {codexStatus?.installed && !codexStatus.authenticated && (
-                      <div className="space-y-2.5">
-                        <div className="flex items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[var(--surface2)] px-3 py-2">
-                          <code className="flex-1 text-[12px] text-green-300 font-mono">codex login</code>
-                          <button
-                            onClick={() => navigator.clipboard.writeText('codex login')}
-                            className="rounded-full p-1 text-[var(--text-faint)] transition hover:text-[var(--text)]"
-                            title="Copy"
-                          >
-                            <Copy className="h-3 w-3" />
-                          </button>
-                        </div>
+
+                    {/* Installed, not yet signed in or idle */}
+                    {(codexStatus === null || codexStatus.installed) && !codexStatus?.authenticated && codexLoginState !== 'success' && codexLoginState !== 'waiting' && (
+                      <div className="space-y-2">
+                        <p className="text-[12px] leading-5 text-[var(--text-dim)]">
+                          Sign in with your ChatGPT Plus account. A browser window will open for authentication.
+                        </p>
                         <button
-                          onClick={() => void startCodexLogin()}
-                          disabled={codexLoginState === 'starting'}
+                          onClick={() => void openCodexLogin()}
+                          disabled={codexLoginState === 'opening'}
                           className="inline-flex items-center gap-2 rounded-full border border-[var(--blue)]/30 bg-[linear-gradient(180deg,rgba(59,130,246,0.96),rgba(37,99,235,0.96))] px-3.5 py-2 text-[12px] font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
                         >
-                          {codexLoginState === 'starting'
-                            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Checking…</>
-                            : <><Check className="h-3.5 w-3.5" />I've signed in</>}
+                          {codexLoginState === 'opening'
+                            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Opening browser…</>
+                            : <><Zap className="h-3.5 w-3.5" />Sign in with ChatGPT</>}
                         </button>
                       </div>
                     )}
-                    {codexLoginState === 'error' && (
-                      <div className="flex items-center gap-2 text-[12px] text-red-300">
-                        <X className="h-3.5 w-3.5" />
-                        {codexLoginError || 'Not signed in yet. Run "codex login" first.'}
+
+                    {/* Browser opened — waiting for user to complete OAuth */}
+                    {codexLoginState === 'waiting' && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2 rounded-[10px] border border-[var(--blue)]/20 bg-[var(--blue)]/5 px-3 py-2.5">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--blue)]" />
+                          <span className="text-[12px] text-[var(--text-dim)]">Browser opened — complete sign-in then click below.</span>
+                        </div>
+                        {codexAuthUrl && (
+                          <button
+                            onClick={() => window.open(codexAuthUrl, '_blank', 'noopener,noreferrer')}
+                            className="text-[11px] text-[var(--blue)] underline underline-offset-2 hover:opacity-80"
+                          >
+                            Re-open sign-in page
+                          </button>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => void confirmCodexLogin()}
+                            disabled={codexLoginState !== 'waiting'}
+                            className="inline-flex items-center gap-2 rounded-full border border-[var(--green-border)] bg-[var(--green-dim)] px-3.5 py-2 text-[12px] font-semibold text-[var(--green)] transition hover:opacity-90 disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" />I've signed in
+                          </button>
+                          <button
+                            onClick={() => { setCodexLoginState('idle'); setCodexLoginError(null); }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface2)] px-3.5 py-2 text-[12px] text-[var(--text-dim)] transition hover:text-[var(--text)]"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     )}
+
+                    {/* Checking status */}
+                    {codexLoginState === 'checking' && (
+                      <div className="flex items-center gap-2 text-[12px] text-[var(--text-dim)]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />Verifying sign-in…
+                      </div>
+                    )}
+
+                    {/* Error feedback */}
+                    {codexLoginError && codexLoginState !== 'success' && (
+                      <div className="flex items-center gap-2 text-[12px] text-red-300">
+                        <X className="h-3.5 w-3.5 shrink-0" />
+                        {codexLoginError}
+                      </div>
+                    )}
+
+                    {/* Success */}
                     {(codexLoginState === 'success' || codexStatus?.authenticated) && (
-                      <div className="flex items-center gap-2 text-[12px] text-green-300">
+                      <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--green)]">
                         <Check className="h-3.5 w-3.5" />
                         Signed in — click Save and activate to use Codex.
                       </div>
