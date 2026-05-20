@@ -42,27 +42,6 @@ function panelClassName(extra?: string) {
   return `rounded-[22px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_20px_60px_rgba(0,0,0,0.12)] backdrop-blur-sm ${extra ?? ''}`;
 }
 
-// Compact page-level header: title + one-line description + optional right-side action
-function PageHeader({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 pb-1">
-      <div>
-        <h1 className="text-[19px] font-semibold tracking-[-0.03em] text-[var(--text)]">{title}</h1>
-        <p className="mt-0.5 text-[12px] leading-5 text-[var(--text-faint)]">{description}</p>
-      </div>
-      {action && <div className="shrink-0">{action}</div>}
-    </div>
-  );
-}
-
 // Structured metadata cell: a labeled value pair used in status strips
 function MetaCell({ label, value, icon: Icon }: { label: string; value: string; icon?: React.ElementType }) {
   return (
@@ -186,11 +165,6 @@ export default function SettingsPage({
   // ── General ────────────────────────────────────────────────────────────
   const renderGeneralSection = () => (
     <div className="space-y-4">
-      <PageHeader
-        title="Settings"
-        description="Workspace controls for FlowSpace."
-      />
-
       {/* Appearance */}
       <div className={`${panelClassName()} px-5 py-4`}>
         <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-faint)] mb-3">
@@ -242,11 +216,6 @@ export default function SettingsPage({
   // ── Account ────────────────────────────────────────────────────────────
   const renderAccountSection = () => (
     <div className="space-y-4">
-      <PageHeader
-        title="User Account"
-        description="Workspace identity, signed-in account, and connected Google accounts."
-      />
-
       {/* Inline status strip under the title */}
       {(activeProviderMeta || true) && (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-[16px] border border-[var(--border)] bg-[var(--surface2)] px-4 py-3">
@@ -409,10 +378,6 @@ export default function SettingsPage({
   // ── Personalization ────────────────────────────────────────────────────
   const renderPersonalizationSection = () => (
     <div className="space-y-4">
-      <PageHeader
-        title="Personalization"
-        description="Tune how FlowSpace communicates — tone, format, and role guidance."
-      />
       <div className={`${panelClassName()} p-5 md:p-6`}>
         <PersonaSettings />
       </div>
@@ -429,10 +394,9 @@ export default function SettingsPage({
 
     return (
       <div className="space-y-4">
-        <PageHeader
-          title="Updates"
-          description="Release channel and version status."
-          action={
+        {/* System status strip */}
+        <div className={`${panelClassName()} px-5 py-4`}>
+          <div className="mb-3 flex justify-end">
             <button
               onClick={handleCheckUpdates}
               disabled={versionLoading}
@@ -441,11 +405,7 @@ export default function SettingsPage({
               <RefreshCw size={12} className={versionLoading ? 'animate-spin' : ''} />
               Check now
             </button>
-          }
-        />
-
-        {/* System status strip */}
-        <div className={`${panelClassName()} px-5 py-4`}>
+          </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
             <MetaCell label="Version" value={__APP_VERSION__} />
             <MetaCell label="Release channel" value="Stable" icon={RadioTower} />
@@ -512,10 +472,6 @@ export default function SettingsPage({
         {selectedSection === 'general' && renderGeneralSection()}
         {selectedSection === 'providers' && (
           <>
-            <PageHeader
-              title="LLM Providers"
-              description="Configure credentials, select models, and set the active provider."
-            />
             <LLMProviderSettings
               providers={providers}
               settings={settings}
@@ -530,10 +486,6 @@ export default function SettingsPage({
         {selectedSection === 'personalization' && renderPersonalizationSection()}
         {selectedSection === 'suggestions' && (
           <>
-            <PageHeader
-              title="Workflow Suggestions"
-              description="Opt in to surface saved-workflow suggestions from your repeated tool usage."
-            />
             {showActivityLog ? (
               <ActivityLogView onBack={() => setShowActivityLog(false)} />
             ) : (

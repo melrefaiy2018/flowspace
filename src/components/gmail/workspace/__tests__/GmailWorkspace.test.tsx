@@ -13,8 +13,9 @@ expect.extend(toHaveNoViolations);
 
 // Mock the api module so telemetry calls don't make real network requests.
 // Use vi.hoisted so the mock fn is available when the factory runs (vi.mock is hoisted).
-const { mockReportGmailWorkspaceOpen } = vi.hoisted(() => ({
+const { mockReportGmailWorkspaceOpen, mockCloseChat } = vi.hoisted(() => ({
   mockReportGmailWorkspaceOpen: vi.fn().mockResolvedValue(undefined),
+  mockCloseChat: vi.fn(),
 }));
 vi.mock('../../../../services/api.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../../../services/api.js')>();
@@ -34,7 +35,12 @@ vi.mock('../../../../hooks/useThreadBrief.js', () => ({
 
 // Mock ChatContext so GmailWorkspace (which calls closeChat on mount) doesn't require a ChatProvider.
 vi.mock('../../../../context/ChatContext.js', () => ({
-  useChatContext: () => ({ closeChat: vi.fn(), setInput: vi.fn() }),
+  useChatContext: () => ({
+    closeChat: mockCloseChat,
+    setInput: vi.fn(),
+    getOrCreateConversation: vi.fn(),
+    currentConversationId: 'gmail-thread:thread-1',
+  }),
 }));
 
 // Mock PaneRouter so we can assert it's rendered without pane internals interfering.
@@ -226,7 +232,7 @@ describe('GmailWorkspace', () => {
     expect(defaultOnPrimaryAction).toHaveBeenCalledWith(item);
   });
 
-  it('fires onSecondaryAction with item and kind when secondary chip is clicked', () => {
+  it('routes the Discuss chip to the inline Chat tab without opening the drawer flow', () => {
     const item = makeWorkItem();
     const detail = makeThreadDetail();
     renderWithTheme(
@@ -239,9 +245,27 @@ describe('GmailWorkspace', () => {
         onAgentAction={defaultOnAgentAction}
       />
     );
-    // 'personal_reply_needed' has secondaryActions: discuss, snooze
     fireEvent.click(screen.getByRole('button', { name: /Discuss/i }));
-    expect(defaultOnSecondaryAction).toHaveBeenCalledWith(item, 'discuss');
+    expect(defaultOnSecondaryAction).not.toHaveBeenCalled();
+    expect(screen.getByRole('tab', { name: /^Chat$/i }).getAttribute('aria-selected')).toBe('true');
+    expect(mockCloseChat).toHaveBeenCalled();
+  });
+
+  it('fires onSecondaryAction with item and kind for non-chat secondary chips', () => {
+    const item = makeWorkItem();
+    const detail = makeThreadDetail();
+    renderWithTheme(
+      <GmailWorkspace
+        item={item}
+        threadDetail={detail}
+        onArchive={defaultOnArchive}
+        onPrimaryAction={defaultOnPrimaryAction}
+        onSecondaryAction={defaultOnSecondaryAction}
+        onAgentAction={defaultOnAgentAction}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Snooze/i }));
+    expect(defaultOnSecondaryAction).toHaveBeenCalledWith(item, 'snooze');
   });
 
   it('has no accessibility violations in ready state', async () => {

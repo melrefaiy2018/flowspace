@@ -650,6 +650,7 @@ function AppInner() {
       : settingsSection === 'providers' ? 'LLM Providers'
       : settingsSection === 'account' ? 'User Account'
       : settingsSection === 'personalization' ? 'Personalization'
+      : settingsSection === 'suggestions' ? 'Workflow Suggestions'
       : 'Updates'
     : activeView === 'workflows' ? 'Workflows'
     : activeView === 'mail' ? 'Mail'

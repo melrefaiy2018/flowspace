@@ -10,9 +10,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { execFileSync, execFile } from 'child_process';
+import { execFileSync, execFile, spawn } from 'child_process';
+import WebSocket from 'ws';
 import http from 'http';
 import https from 'https';
+import net from 'net';
 import { randomUUID } from 'crypto';
 import dotenv from 'dotenv';
 import { handleChat, executeApprovedAction } from './src/agent/chat.js';
@@ -1225,7 +1227,7 @@ app.delete('/api/accounts/:accountId', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Codex CLI — install check + device-auth login flow
+// Codex CLI — install check + OAuth browser login flow
 // ---------------------------------------------------------------------------
 
 const CODEX_CANDIDATES = [
@@ -1236,26 +1238,22 @@ const CODEX_CANDIDATES = [
   `${os.homedir()}/.local/bin/codex`,
 ];
 
-let cachedCodexBin: string | null | undefined; // undefined = not yet checked
-
+// Use undefined = unchecked, null = not found, string = found path.
+// Never cache permanently — re-check on each status request so installs
+// that happen after server start are detected.
 function findCodexBin(): string | null {
-  if (cachedCodexBin !== undefined) return cachedCodexBin;
   for (const candidate of CODEX_CANDIDATES) {
     try {
       execFileSync(candidate, ['--version'], { stdio: 'ignore', env: shellEnv });
-      cachedCodexBin = candidate;
-      return cachedCodexBin;
+      return candidate;
     } catch {
       // try next
     }
   }
-  cachedCodexBin = null;
   return null;
 }
 
 function checkCodexAuth(): { authenticated: boolean; reason: string } {
-  // codex login status writes directly to the terminal device — cannot be captured via pipe.
-  // Instead, check ~/.codex/auth.json which codex writes after a successful login.
   try {
     const authPath = path.join(os.homedir(), '.codex', 'auth.json');
     if (!fs.existsSync(authPath)) {
@@ -1263,7 +1261,6 @@ function checkCodexAuth(): { authenticated: boolean; reason: string } {
     }
     const raw = fs.readFileSync(authPath, 'utf-8');
     const auth = JSON.parse(raw);
-    // Any of these indicate a successful login
     const hasTokens = auth.tokens && (
       typeof auth.tokens === 'string' ||
       (typeof auth.tokens === 'object' && Object.keys(auth.tokens).length > 0)
@@ -1274,8 +1271,181 @@ function checkCodexAuth(): { authenticated: boolean; reason: string } {
       return { authenticated: true, reason: `auth_mode=${auth.auth_mode}` };
     }
     return { authenticated: false, reason: 'auth.json exists but contains no valid credentials' };
-  } catch (err: any) {
+  } catch {
     return { authenticated: false, reason: 'Failed to read auth.json' };
+  }
+}
+
+type CodexLoginStatus = 'pending' | 'success' | 'error';
+
+interface ActiveCodexLogin {
+  proc: ReturnType<typeof spawn>;
+  ws: WebSocket | null;
+  loginId: string | null;
+  authUrl: string | null;
+  status: CodexLoginStatus;
+  reason: string;
+  startedAt: number;
+  cleanupTimer: NodeJS.Timeout | null;
+}
+
+const CODEX_LOGIN_TTL_MS = 5 * 60 * 1000;
+let activeCodexLogin: ActiveCodexLogin | null = null;
+
+function cleanupCodexLoginSession(): void {
+  const session = activeCodexLogin;
+  activeCodexLogin = null;
+  if (!session) return;
+  if (session.cleanupTimer) clearTimeout(session.cleanupTimer);
+  try { session.ws?.close(); } catch { /* ignore */ }
+  try { session.proc.kill(); } catch { /* ignore */ }
+}
+
+function scheduleCodexLoginCleanup(session: ActiveCodexLogin, delayMs: number): void {
+  if (session.cleanupTimer) clearTimeout(session.cleanupTimer);
+  session.cleanupTimer = setTimeout(() => {
+    if (activeCodexLogin === session) cleanupCodexLoginSession();
+  }, delayMs);
+}
+
+function getAvailableLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close(() => {
+        if (port > 0) resolve(port);
+        else reject(new Error('Unable to allocate Codex login port'));
+      });
+    });
+  });
+}
+
+async function startCodexLoginSession(bin: string): Promise<{ authUrl: string; loginId: string | null }> {
+  cleanupCodexLoginSession();
+
+  const port = await getAvailableLoopbackPort();
+  const wsUrl = `ws://127.0.0.1:${port}`;
+  const proc = spawn(bin, ['app-server', '--listen', wsUrl], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: shellEnv,
+  });
+
+  const session: ActiveCodexLogin = {
+    proc,
+    ws: null,
+    loginId: null,
+    authUrl: null,
+    status: 'pending',
+    reason: 'Waiting for browser sign-in',
+    startedAt: Date.now(),
+    cleanupTimer: null,
+  };
+  activeCodexLogin = session;
+  scheduleCodexLoginCleanup(session, CODEX_LOGIN_TTL_MS);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Codex app-server startup timeout')), 10_000);
+      const fail = (err: Error) => {
+        clearTimeout(timer);
+        reject(err);
+      };
+      const ready = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      proc.stdout?.once('data', ready);
+      proc.stderr?.once('data', ready);
+      proc.once('error', fail);
+      proc.once('exit', (code) => {
+        fail(new Error(`Codex app-server exited before login started${code === null ? '' : ` (code ${code})`}`));
+      });
+    });
+
+    return await new Promise<{ authUrl: string; loginId: string | null }>((resolve, reject) => {
+      const ws = new WebSocket(wsUrl);
+      session.ws = ws;
+      let idCounter = 0;
+      const initializeId = String(++idCounter);
+      const loginId = String(++idCounter);
+      const timer = setTimeout(() => reject(new Error('Codex login/start timeout')), 10_000);
+
+      ws.on('open', () => {
+        ws.send(JSON.stringify({
+          jsonrpc: '2.0',
+          id: initializeId,
+          method: 'initialize',
+          params: { clientInfo: { name: 'flowspace', version: APP_VERSION }, capabilities: null },
+        }));
+      });
+
+      ws.on('message', (raw: Buffer) => {
+        let msg: any;
+        try {
+          msg = JSON.parse(raw.toString());
+        } catch {
+          session.status = 'error';
+          session.reason = 'Codex app-server returned an invalid message';
+          reject(new Error(session.reason));
+          return;
+        }
+
+        if (msg.id === initializeId && msg.result !== undefined) {
+          ws.send(JSON.stringify({
+            jsonrpc: '2.0',
+            id: loginId,
+            method: 'account/login/start',
+            params: { type: 'chatgpt', codexStreamlinedLogin: true },
+          }));
+          return;
+        }
+
+        if (msg.id === loginId) {
+          clearTimeout(timer);
+          if (msg.error) {
+            reject(new Error(msg.error.message ?? 'Codex login/start failed'));
+            return;
+          }
+          if (msg.result?.type !== 'chatgpt' || !msg.result?.authUrl) {
+            reject(new Error('Codex did not return a ChatGPT OAuth URL'));
+            return;
+          }
+          session.loginId = msg.result.loginId ?? null;
+          session.authUrl = msg.result.authUrl;
+          resolve({ authUrl: session.authUrl, loginId: session.loginId });
+          return;
+        }
+
+        if (msg.method === 'account/login/completed') {
+          if (session.loginId && msg.params?.loginId && msg.params.loginId !== session.loginId) return;
+          session.status = msg.params?.success ? 'success' : 'error';
+          session.reason = msg.params?.success
+            ? 'ChatGPT OAuth sign-in completed'
+            : (msg.params?.error ?? 'ChatGPT OAuth sign-in failed');
+          scheduleCodexLoginCleanup(session, session.status === 'success' ? 15_000 : 60_000);
+        }
+      });
+
+      ws.on('error', (err: Error) => {
+        clearTimeout(timer);
+        session.status = 'error';
+        session.reason = err.message;
+        reject(err);
+      });
+
+      proc.once('exit', (code) => {
+        if (session.status === 'pending') {
+          session.status = 'error';
+          session.reason = `Codex app-server exited${code === null ? '' : ` (code ${code})`}`;
+        }
+      });
+    });
+  } catch (err) {
+    cleanupCodexLoginSession();
+    throw err;
   }
 }
 
@@ -1292,7 +1462,30 @@ app.get('/api/codex/login/poll', (_req, res) => {
   const bin = findCodexBin();
   if (!bin) return res.json({ authenticated: false, reason: 'codex binary not found' });
   const { authenticated, reason } = checkCodexAuth();
-  res.json({ authenticated, reason });
+  const login = activeCodexLogin
+    ? {
+        status: activeCodexLogin.status,
+        reason: activeCodexLogin.reason,
+        loginId: activeCodexLogin.loginId,
+      }
+    : null;
+  res.json({ authenticated, reason: login?.reason ?? reason, login });
+});
+
+// POST /api/codex/login/start — starts the ChatGPT OAuth flow via the app-server
+// Returns { authUrl } which the frontend opens in a new browser tab.
+app.post('/api/codex/login/start', async (_req, res) => {
+  const bin = findCodexBin();
+  if (!bin) {
+    return res.status(400).json({ error: 'codex binary not found — run: npm install -g @openai/codex' });
+  }
+
+  try {
+    const login = await startCodexLoginSession(bin);
+    res.json(login);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? 'Failed to start login' });
+  }
 });
 
 // ---------------------------------------------------------------------------

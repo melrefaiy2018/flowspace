@@ -748,6 +748,9 @@ export const api = {
   pollCodexLogin: () =>
     fetchJSON<{ authenticated: boolean; reason?: string }>('/api/codex/login/poll'),
 
+  startCodexLogin: () =>
+    fetchJSON<{ authUrl: string }>('/api/codex/login/start', { method: 'POST' }),
+
   // ── Version ──────────────────────────────────────────────────────
   getVersion: () => fetchJSON<VersionInfo>('/api/version'),
 

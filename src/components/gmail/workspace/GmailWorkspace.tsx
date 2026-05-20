@@ -180,6 +180,9 @@ export default function GmailWorkspace({
   // Force-close the side chat panel when the Gmail workspace is mounted.
   // Chat happens inside this canvas (Chat tab), not in the side drawer.
   useEffect(() => { closeChat(); }, [closeChat]);
+  useEffect(() => {
+    if (activeTab === 'chat') closeChat();
+  }, [activeTab, closeChat]);
 
   // Stable-item debounce: wait 100ms after an item change before rendering the new
   // pane body. Rapid successive clicks reset the timer so only the final item renders.
@@ -237,7 +240,14 @@ export default function GmailWorkspace({
   const contextItemCount = item.enrichment ? 1 : 0;
 
   const handlePrimaryAction = () => onPrimaryAction(item);
-  const handleSecondaryAction = (kind: SecondaryAction['kind']) => onSecondaryAction(item, kind);
+  const handleSecondaryAction = (kind: SecondaryAction['kind']) => {
+    if (kind === 'discuss') {
+      setActiveTab('chat');
+      closeChat();
+      return;
+    }
+    onSecondaryAction(item, kind);
+  };
 
   // Bridge: pane-level (action, question?) → parent-level (item, action, question?)
   const handleAgentAction = (action: GmailAgentAction, question?: string) => {

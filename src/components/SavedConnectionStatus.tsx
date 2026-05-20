@@ -41,7 +41,7 @@ export default function SavedConnectionStatus({ providerId, activeProvider, save
         {liveCheckResult && (
           <span className={`ml-auto flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
             liveCheckResult.success
-              ? 'bg-green-500/15 text-green-300'
+              ? 'border border-[var(--green-border)] bg-[var(--green-dim)] text-[var(--green)]'
               : 'bg-red-500/15 text-red-300'
           }`}>
             {liveCheckResult.success
@@ -59,7 +59,7 @@ export default function SavedConnectionStatus({ providerId, activeProvider, save
             <span className="text-[11px] text-[var(--text-faint)]">{row.label}</span>
             <span className={`text-[11px] font-medium truncate max-w-[160px] ${
               row.label === 'Route status' && routeStatus === 'Live'
-                ? 'text-[var(--accent)]'
+                ? 'text-[var(--green)]'
                 : 'text-[var(--text-dim)]'
             }`}>{row.value}</span>
           </div>

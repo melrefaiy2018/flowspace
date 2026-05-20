@@ -66,7 +66,8 @@ export const PROVIDER_META: readonly ProviderMeta[] = [
     defaultBaseURL: '',
     keyPlaceholder: 'not required — uses codex CLI auth',
     models: [
-      { id: 'o4-mini', label: 'o4-mini (default)' },
+      { id: 'gpt-5.5', label: 'GPT-5.5 (default)' },
+      { id: 'gpt-5', label: 'GPT-5' },
       { id: 'o3', label: 'o3' },
     ],
   },

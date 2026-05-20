@@ -82,10 +82,10 @@ export async function batchEnrichments(
 
     try {
       const res = await fetcher(chunk);
-      batchEnrichments = res.enrichments;
-      batchFailed = res.failed;
-      enrichments.push(...res.enrichments);
-      failed.push(...res.failed);
+      batchEnrichments = Array.isArray(res?.enrichments) ? res.enrichments : [];
+      batchFailed = Array.isArray(res?.failed) ? res.failed : [];
+      enrichments.push(...batchEnrichments);
+      failed.push(...batchFailed);
     } catch (err) {
       // Whole batch failed — mark every thread id in this chunk as failed.
       batchFailed = chunk.map((t) => t.id);
